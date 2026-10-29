@@ -1,5 +1,5 @@
-import { Link, useSearch } from "@tanstack/react-router";
-import { Lock, ShieldCheck } from "lucide-react";
+import { Link, useMatchRoute, useSearch } from "@tanstack/react-router";
+import { ArrowUpCircle, Lock, ShieldCheck } from "lucide-react";
 import { useLockVault } from "@/app/queries";
 import { Brand } from "@/components/common/brand";
 import { SIDEBAR_STYLE } from "@/components/shell/app-sidebar";
@@ -18,15 +18,17 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-// Only Security ships in this milestone; Backup/About are intentionally not
-// routed yet, so we do not list them (no placeholder pages).
-const SECTIONS: { label: string; icon: typeof ShieldCheck; to: "/settings/security" | null }[] = [
+// Backup/About are intentionally not routed yet, so we do not list them (no
+// placeholder pages). Sections without a route render disabled.
+const SECTIONS: { label: string; icon: typeof ShieldCheck; to: "/settings/security" | "/settings/updates" | null }[] = [
   { label: "Security", icon: ShieldCheck, to: "/settings/security" },
+  { label: "Updates", icon: ArrowUpCircle, to: "/settings/updates" },
 ];
 
 export function SettingsSidebar() {
   const search = useSearch({ strict: false }) as Record<string, unknown>;
   const { setOpenMobile, isMobile } = useSidebar();
+  const matchRoute = useMatchRoute();
   const lockMutation = useLockVault();
   const backSearch: Record<string, string | undefined> = {};
   if (typeof search.project === "string") backSearch.project = search.project;
@@ -53,7 +55,7 @@ export function SettingsSidebar() {
               {SECTIONS.map(({ label, icon: Icon, to }) => (
                 <SidebarMenuItem key={label}>
                   {to ? (
-                    <SidebarMenuButton asChild isActive tooltip={label}>
+                    <SidebarMenuButton asChild isActive={matchRoute({ to, fuzzy: false }) !== false} tooltip={label}>
                       <Link to={to} search={backSearch} onClick={() => isMobile && setOpenMobile(false)}>
                         <Icon className="size-4" strokeWidth={1.8} aria-hidden />
                         <span>{label}</span>
