@@ -123,7 +123,7 @@ jobs:
           DMG="$(find src-tauri/target -path '*/release/bundle/dmg/*.dmg' -print -quit)"
           test -n "$DMG"
           echo "Notarizing $DMG"
-          xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --force --wait
           xcrun stapler staple "$DMG"
           xcrun stapler validate "$DMG"
           gh release upload "${{ github.ref_name }}" "$DMG" --clobber
