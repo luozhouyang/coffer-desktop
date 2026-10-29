@@ -11,7 +11,7 @@ import {
   Trash2,
   KeyRound,
 } from "lucide-react";
-import { useSidebarCounts, useLockVault, useProjects, useSettings } from "@/app/queries";
+import { useSidebarCounts, useProjects, useSettings } from "@/app/queries";
 import { useVault } from "@/app/vault-context";
 import { uiStore } from "@/app/ui-store";
 import type { Project } from "@/lib/ipc-types";
@@ -64,9 +64,8 @@ export function AppSidebar() {
   const { data: projects, isPending: projectsPending } = useProjects();
   const { openPalette, openProjectDialog } = uiStore;
   const { setOpenMobile, isMobile } = useSidebar();
-  const { warning } = useVault();
+  const { warning, lock } = useVault();
   const settingsQuery = useSettings();
-  const lockMutation = useLockVault();
 
   const closeMobile = () => {
     if (isMobile) setOpenMobile(false);
@@ -77,7 +76,9 @@ export function AppSidebar() {
 
   const onLock = () => {
     closeMobile();
-    lockMutation.mutate();
+    // The provider runs the command, then clears the cache and redirects, so
+    // the locked event and the response cannot both drive the navigation.
+    void lock();
   };
 
   return (
@@ -190,7 +191,6 @@ export function AppSidebar() {
             <SidebarMenuButton
               tooltip="Lock vault"
               onClick={onLock}
-              disabled={lockMutation.isPending}
               className="text-muted-foreground hover:text-foreground"
             >
               <Lock className="size-4" strokeWidth={1.8} aria-hidden />

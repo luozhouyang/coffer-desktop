@@ -16,7 +16,7 @@ use crate::vault::{VaultDb, db};
 use super::status_of;
 
 /// Runs Argon2 / SQLCipher work off the async runtime.
-async fn blocking<F, T>(f: F) -> Result<T, AppError>
+pub(super) async fn blocking<F, T>(f: F) -> Result<T, AppError>
 where
     F: FnOnce() -> Result<T, AppError> + Send + 'static,
     T: Send + 'static,
@@ -68,6 +68,9 @@ pub async fn vault_create(
     })
     .await?;
     state.set_unlocked(db)?;
+    // A recreated vault has a new master key; an item left over from an older
+    // vault would unlock nothing and only confuse the next launch.
+    let _ = state.keychain.delete();
     Ok(status_of(&state))
 }
 

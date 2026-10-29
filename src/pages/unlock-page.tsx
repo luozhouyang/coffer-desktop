@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Eye, EyeOff, Fingerprint, KeyRound, Lock, ShieldCheck, WifiOff } from "lucide-react";
-import { useUnlock } from "@/app/queries";
+import { useKeychainStatus, useUnlock, useUnlockKeychain } from "@/app/queries";
 import { NoRecoveryNotice } from "@/components/common/no-recovery-notice";
 import { BrandMark } from "@/components/common/brand";
 import { Kbd } from "@/components/common/kbd";
@@ -24,6 +24,9 @@ type UnlockValues = z.infer<typeof unlockSchema>;
 export function UnlockPage() {
   const navigate = useNavigate();
   const unlock = useUnlock();
+  const unlockKeychain = useUnlockKeychain();
+  const keychainQuery = useKeychainStatus();
+  const keychain = keychainQuery.data;
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -31,6 +34,16 @@ export function UnlockPage() {
     resolver: zodResolver(unlockSchema),
     defaultValues: { password: "" },
   });
+
+  const onUnlockWithTouchId = async () => {
+    setFormError(null);
+    try {
+      await unlockKeychain.mutateAsync();
+      void navigate({ to: "/", replace: true });
+    } catch (err) {
+      setFormError(errorMessage(err));
+    }
+  };
 
   const onSubmit = form.handleSubmit(async ({ password }) => {
     setFormError(null);
@@ -137,16 +150,35 @@ export function UnlockPage() {
             </form>
           </Form>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="mt-3 block">
-                <Button variant="outline" className="h-10 w-full gap-2 text-[13px]" disabled>
-                  <Fingerprint className="size-4" aria-hidden /> Unlock with Touch ID
-                </Button>
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>Not enabled · turn it on after first unlock</TooltipContent>
-          </Tooltip>
+          {keychain?.supported ? (
+            keychain.enabled && keychain.available ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-3 h-10 w-full gap-2 text-[13px]"
+                onClick={() => void onUnlockWithTouchId()}
+                disabled={unlockKeychain.isPending}
+              >
+                {unlockKeychain.isPending ? <InlineSpinner /> : <Fingerprint className="size-4" aria-hidden />}
+                {unlockKeychain.isPending ? "Waiting for Touch ID…" : "Unlock with Touch ID"}
+              </Button>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="mt-3 block">
+                    <Button type="button" variant="outline" className="h-10 w-full gap-2 text-[13px]" disabled>
+                      <Fingerprint className="size-4" aria-hidden /> Unlock with Touch ID
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {keychain.enabled
+                    ? "Touch ID is not set up on this Mac"
+                    : "Not enabled · turn it on after first unlock"}
+                </TooltipContent>
+              </Tooltip>
+            )
+          ) : null}
 
           <NoRecoveryNotice className="mt-5" />
 

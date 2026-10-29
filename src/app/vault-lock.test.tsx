@@ -19,6 +19,33 @@ describe("vault lock events", () => {
     vi.useRealTimers();
   });
 
+  it("survives the vault_lock response racing the locked event", async () => {
+    // Tauri delivers the event while the command response is still in flight.
+    const ipc = createMockIpc({ delayMs: 15 });
+    const { router } = renderApp({ ipc, initialHref: "/" });
+    await waitForPath(router, "/");
+    await screen.findByTestId("vault-list", {}, { timeout: 4000 });
+
+    await userEvent.setup().click(screen.getByRole("button", { name: /Lock vault/ }));
+
+    await waitForPath(router, "/unlock");
+    await new Promise((r) => setTimeout(r, 100));
+    expect(screen.queryByText("Something went wrong")).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Unlock" })).toBeInTheDocument();
+  });
+
+  it("locks from the sidebar without showing the router error screen", async () => {
+    const { ipc, router } = await openVault();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: /Lock vault/ }));
+
+    await waitForPath(router, "/unlock");
+    expect(await screen.findByRole("button", { name: "Unlock" })).toBeInTheDocument();
+    expect(screen.queryByText("Something went wrong")).not.toBeInTheDocument();
+    expect(ipc.__state.unlocked).toBe(false);
+  });
+
   it("on vault://locked clears the query cache and redirects to /unlock", async () => {
     const { ipc, queryClient, router } = await openVault();
 
@@ -40,8 +67,10 @@ describe("vault lock events", () => {
     const remaining = queryClient.getQueryCache().findAll().map((q) => q.queryKey);
     expect(remaining.filter((key) => ["items", "item"].includes(key[0] as string))).toEqual([]);
     // …and anything refetched afterwards hits a locked backend (errors).
+    // Vault and keychain status stay callable while locked: the unlock screen
+    // needs both.
     for (const q of queryClient.getQueryCache().findAll()) {
-      if (q.queryKey[0] === "vault") continue;
+      if (q.queryKey[0] === "vault" || q.queryKey[0] === "keychain") continue;
       await waitFor(() => expect(q.state.status).toBe("error"));
     }
     const status = queryClient.getQueryData<{ unlocked: boolean }>(queryKeys.vaultStatus);

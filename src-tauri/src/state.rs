@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use crate::autolock::AutoLock;
 use crate::clipboard::ClipboardManager;
 use crate::error::AppError;
+use crate::keychain::BiometricKeychain;
 use crate::models::Settings;
 use crate::vault::VaultDb;
 use crate::vault::paths::VaultPaths;
@@ -30,10 +31,15 @@ pub struct AppState {
     /// grabbed the DB after checking the lock notice a concurrent lock.
     epoch: AtomicU64,
     pub clipboard: Arc<ClipboardManager>,
+    pub keychain: Arc<dyn BiometricKeychain>,
 }
 
 impl AppState {
-    pub fn new(paths: VaultPaths, clipboard: Arc<ClipboardManager>) -> Self {
+    pub fn new(
+        paths: VaultPaths,
+        clipboard: Arc<ClipboardManager>,
+        keychain: Arc<dyn BiometricKeychain>,
+    ) -> Self {
         let settings = crate::settings::load(&paths.settings());
         let autolock = AutoLock::new(std::time::Duration::from_secs(
             settings.auto_lock_secs.into(),
@@ -45,6 +51,7 @@ impl AppState {
             autolock: Mutex::new(autolock),
             epoch: AtomicU64::new(0),
             clipboard,
+            keychain,
         }
     }
 
@@ -152,7 +159,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let fake = Arc::new(FakeClipboard::default());
         let clipboard = Arc::new(ClipboardManager::new(fake));
-        let state = AppState::new(VaultPaths::from_app_data(dir.path()), clipboard);
+        let keychain = Arc::new(crate::keychain::tests::FakeKeychain::new());
+        let state = AppState::new(VaultPaths::from_app_data(dir.path()), clipboard, keychain);
         (dir, state)
     }
 

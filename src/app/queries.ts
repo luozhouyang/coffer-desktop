@@ -6,7 +6,6 @@ import {
   projectsPrefix,
   queryKeys,
 } from "@/lib/query-keys";
-import { EMPTY_COUNTS } from "@/lib/ipc-types";
 import type {
   ItemFilter,
   ItemInput,
@@ -62,6 +61,16 @@ export function useItem(id: string | undefined) {
 export function useSettings() {
   const ipc = useIpc();
   return useQuery({ queryKey: queryKeys.settings, queryFn: () => ipc.settingsGet() });
+}
+
+export function useKeychainStatus(enabled = true) {
+  const ipc = useIpc();
+  return useQuery({
+    queryKey: queryKeys.keychainStatus,
+    queryFn: () => ipc.vaultKeychainStatus(),
+    enabled,
+    staleTime: 30_000,
+  });
 }
 
 export function useAudit(itemId: string | undefined) {
@@ -211,6 +220,39 @@ export function useUnlock() {
   });
 }
 
+export function useUnlockKeychain() {
+  const ipc = useIpc();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => ipc.vaultUnlockKeychain(),
+    onSuccess: (status) => {
+      qc.setQueryData(queryKeys.vaultStatus, status);
+    },
+  });
+}
+
+export function useEnableKeychain() {
+  const ipc = useIpc();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (password: string) => ipc.vaultKeychainEnable(password),
+    onSuccess: (status) => {
+      qc.setQueryData(queryKeys.keychainStatus, status);
+    },
+  });
+}
+
+export function useDisableKeychain() {
+  const ipc = useIpc();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => ipc.vaultKeychainDisable(),
+    onSuccess: (status) => {
+      qc.setQueryData(queryKeys.keychainStatus, status);
+    },
+  });
+}
+
 export function useCreateVault() {
   const ipc = useIpc();
   const qc = useQueryClient();
@@ -222,14 +264,3 @@ export function useCreateVault() {
   });
 }
 
-export function useLockVault() {
-  const ipc = useIpc();
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () => ipc.vaultLock(),
-    onSuccess: () => {
-      qc.clear();
-      qc.setQueryData(queryKeys.vaultStatus, { initialized: true, unlocked: false, autoLockSecs: 300, counts: EMPTY_COUNTS });
-    },
-  });
-}

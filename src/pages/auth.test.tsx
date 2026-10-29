@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { createMockIpc } from "@/lib/mock-ipc";
@@ -59,6 +59,35 @@ describe("unlock page", () => {
     const { router } = renderApp({ ipc: startLocked(), initialHref: "/unlock" });
     await waitForPath(router, "/unlock");
     expect(screen.getAllByText(/No recovery\./).length).toBeGreaterThan(0);
+  });
+
+  it("hides Touch ID unlock when the platform has no biometric keychain", async () => {
+    const ipc = startLocked();
+    const statusSpy = vi.spyOn(ipc, "vaultKeychainStatus");
+    const { router } = renderApp({ ipc, initialHref: "/unlock" });
+    await waitForPath(router, "/unlock");
+
+    await waitFor(() => expect(statusSpy).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: /Touch ID/ })).not.toBeInTheDocument();
+  });
+
+  it("offers Touch ID only after it has been enabled", async () => {
+    const ipc = createMockIpc({ keychainSupported: true });
+    // Enabling happens from Settings while unlocked; do that before locking.
+    await ipc.vaultKeychainEnable("coffer");
+    ipc.__emit("vault://locked");
+    const { router } = renderApp({ ipc, initialHref: "/unlock" });
+    await waitForPath(router, "/unlock");
+
+    const button = await screen.findByRole("button", { name: "Unlock with Touch ID" });
+    expect(button).toBeEnabled();
+
+    const unlockSpy = vi.spyOn(ipc, "vaultUnlockKeychain");
+    await userEvent.setup().click(button);
+
+    await waitForPath(router, "/");
+    expect(unlockSpy).toHaveBeenCalledTimes(1);
+    expect(ipc.__state.unlocked).toBe(true);
   });
 });
 

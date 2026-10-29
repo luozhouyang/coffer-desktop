@@ -8,6 +8,7 @@ export const queryKeys = {
   items: (filter: ItemFilter) => ["items", filter] as const,
   item: (id: string) => ["item", id] as const,
   settings: ["settings"] as const,
+  keychainStatus: ["keychain", "status"] as const,
   audit: (itemId: string) => ["audit", itemId] as const,
   search: (q: string, filter: { projectId?: string | null; unassignedOnly: boolean }) =>
     ["search", { q, ...filter }] as const,

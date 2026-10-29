@@ -11,6 +11,7 @@ pub mod commands;
 pub mod crypto;
 pub mod error;
 pub mod events;
+pub mod keychain;
 pub mod models;
 pub mod search;
 pub mod settings;
@@ -29,13 +30,15 @@ use crate::commands::{
     audit_list, classify_preview, copy_secret, item_create, item_delete, item_get,
     item_reveal_secret, item_set_category, item_set_project, item_toggle_favorite, item_update,
     items_list, project_create, project_delete, project_update, projects_list, settings_get,
-    settings_set, sidebar_counts, vault_change_password, vault_create, vault_lock, vault_status,
-    vault_touch_activity, vault_unlock,
+    settings_set, sidebar_counts, vault_change_password, vault_create, vault_keychain_disable,
+    vault_keychain_enable, vault_keychain_status, vault_lock, vault_status, vault_touch_activity,
+    vault_unlock, vault_unlock_keychain,
 };
 
 use crate::autolock::Tick;
 use crate::clipboard::{ArboardClipboard, ClipboardManager};
 use crate::events::{ClipboardClearedEvent, LockWarningEvent, LockedEvent};
+use crate::keychain::PlatformKeychain;
 use crate::models::events::LockWarning;
 use crate::state::AppState;
 use crate::vault::paths::VaultPaths;
@@ -54,6 +57,10 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             vault_lock,
             vault_touch_activity,
             vault_change_password,
+            vault_keychain_status,
+            vault_keychain_enable,
+            vault_keychain_disable,
+            vault_unlock_keychain,
             settings_get,
             settings_set,
             sidebar_counts,
@@ -141,7 +148,12 @@ fn spawn_background_tasks<R: Runtime>(app: AppHandle<R>) {
 /// Builds shared state for the given data directory. Also used by tests.
 pub fn build_state(app_data_dir: PathBuf) -> AppState {
     let clipboard = Arc::new(ClipboardManager::new(Arc::new(ArboardClipboard)));
-    AppState::new(VaultPaths::from_app_data(&app_data_dir), clipboard)
+    let keychain = Arc::new(PlatformKeychain);
+    AppState::new(
+        VaultPaths::from_app_data(&app_data_dir),
+        clipboard,
+        keychain,
+    )
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -180,6 +192,10 @@ mod tests {
         "vault_lock",
         "vault_touch_activity",
         "vault_change_password",
+        "vault_keychain_status",
+        "vault_keychain_enable",
+        "vault_keychain_disable",
+        "vault_unlock_keychain",
         "settings_get",
         "settings_set",
         "sidebar_counts",

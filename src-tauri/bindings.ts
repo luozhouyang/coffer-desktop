@@ -17,6 +17,21 @@ export const commands = {
 	vaultTouchActivity: () => typedError<null, AppError>(__TAURI_INVOKE("vault_touch_activity")),
 	/**  `vault_change_password`: re-wraps only the master key. */
 	vaultChangePassword: (oldPassword: string, newPassword: string) => typedError<null, AppError>(__TAURI_INVOKE("vault_change_password", { oldPassword, newPassword })),
+	/**  `vault_keychain_status`: any state. */
+	vaultKeychainStatus: () => __TAURI_INVOKE<KeychainStatus>("vault_keychain_status"),
+	/**
+	 *  `vault_keychain_enable`: stores the master key behind biometrics. Requires
+	 *  the master password so enabling is never possible from an unlocked session
+	 *  alone.
+	 */
+	vaultKeychainEnable: (password: string) => typedError<KeychainStatus, AppError>(__TAURI_INVOKE("vault_keychain_enable", { password })),
+	/**  `vault_keychain_disable`: removes the stored key. Safe in any state. */
+	vaultKeychainDisable: () => typedError<KeychainStatus, AppError>(__TAURI_INVOKE("vault_keychain_disable")),
+	/**
+	 *  `vault_unlock_keychain`: restores the master key from the keychain, which
+	 *  makes the system prompt for Touch ID.
+	 */
+	vaultUnlockKeychain: () => typedError<VaultStatus, AppError>(__TAURI_INVOKE("vault_unlock_keychain")),
 	/**  `settings_get` */
 	settingsGet: () => typedError<Settings, AppError>(__TAURI_INVOKE("settings_get")),
 	/**  `settings_set` */
@@ -121,7 +136,7 @@ export type CopyResult = {
  *  Error codes from the IPC contract. `#[serde(rename_all = "camelCase")]`
  *  produces `invalidPassword`, `vaultNotInitialized`, `alreadyInitialized`.
  */
-export type ErrorCode = "locked" | "invalidPassword" | "vaultNotInitialized" | "alreadyInitialized" | "notFound" | "conflict" | "validation" | "io" | "internal";
+export type ErrorCode = "locked" | "invalidPassword" | "vaultNotInitialized" | "alreadyInitialized" | "notFound" | "conflict" | "validation" | "io" | "keychainUnavailable" | "internal";
 
 export type ItemDetail = ItemDetail_Serialize | ItemDetail_Deserialize;
 
@@ -233,6 +248,12 @@ export type ItemUpdate_Serialize = {
 	projectId: string | null,
 	notes: string | null,
 	tags: string[] | null,
+};
+
+export type KeychainStatus = {
+	supported: boolean,
+	available: boolean,
+	enabled: boolean,
 };
 
 /**  `vault://lock-warning` payload. */
