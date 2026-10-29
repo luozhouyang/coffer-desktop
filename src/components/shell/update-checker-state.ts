@@ -27,8 +27,3 @@ export async function checkForUpdateOnce(
     return null;
   }
 }
-
-/** Test-only: forget the per-session guard. */
-export function __resetStartupUpdateCheckForTests() {
-  checkedThisSession = false;
-}
