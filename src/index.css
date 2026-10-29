@@ -1,0 +1,184 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: "Inter Variable", "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "SF Mono", Menlo, monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 2px);
+}
+
+/*
+ * Coffer dark theme — tokens mapped 1:1 from docs/UI_UX.md.
+ * Dark is the only shipped theme; the tokens live on :root.
+ */
+:root {
+  --radius: 0.5625rem; /* 9px */
+
+  --background: #0e1116; /* bg/app */
+  --foreground: #e9ecf2; /* text/primary */
+  --card: #141922; /* bg/panel */
+  --card-foreground: #e9ecf2;
+  --popover: #171b23; /* bg/elevated */
+  --popover-foreground: #e9ecf2;
+  --primary: #e2a75a; /* accent/brass */
+  --primary-foreground: #1a1307;
+  --secondary: #171b23;
+  --secondary-foreground: #e9ecf2;
+  --muted: #1e2530; /* bg/selected */
+  --muted-foreground: #a7afbd; /* text/secondary */
+  --accent: #1e2530; /* bg/selected */
+  --accent-foreground: #e9ecf2;
+  --destructive: #e06c6c; /* danger */
+  --destructive-foreground: #1a0d0d;
+  --border: #262d38; /* border/default */
+  --input: #2b3240; /* border/strong */
+  --ring: #e2a75a;
+  --chart-1: #e2a75a;
+  --chart-2: #7fd3a4;
+  --chart-3: #8fb4ff;
+  --chart-4: #c3a6ff;
+  --chart-5: #e88ba0;
+
+  /* Sidebar mapping from IMPLEMENTATION_PLAN.md §3.2 */
+  --sidebar: #12151c;
+  --sidebar-foreground: #c6cdd9;
+  --sidebar-primary: #e2a75a;
+  --sidebar-primary-foreground: #1a1307;
+  --sidebar-accent: #1e2530;
+  --sidebar-accent-foreground: #e9ecf2;
+  --sidebar-border: #1d222b;
+  --sidebar-ring: #e2a75a;
+
+  /* Extra semantic tokens (UI_UX.md §2.1) */
+  --coffer-faint: #4e5663; /* text/faint */
+  --coffer-warning: #d8b08a;
+  --coffer-success: #7fd3a4;
+  --coffer-info: #8fb4ff;
+  --coffer-panel-border: #262d38;
+  --coffer-strong-border: #2b3240;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "cv11", "ss01";
+    letter-spacing: -0.006em;
+  }
+
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  ::selection {
+    background: #e2a75a40;
+  }
+
+  /* Thin, quiet scrollbars to match the desktop chrome */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #2b3240;
+    border-radius: 9999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3a4252;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  .text-faint {
+    color: var(--coffer-faint);
+  }
+  .text-warning {
+    color: var(--coffer-warning);
+  }
+  .bg-app {
+    background-color: var(--background);
+  }
+  .bg-panel {
+    background-color: var(--card);
+  }
+  .bg-elevated {
+    background-color: var(--popover);
+  }
+  .bg-input-field {
+    background-color: #0f131a;
+  }
+  .border-strong {
+    border-color: var(--coffer-strong-border);
+  }
+  .truncate-secret {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

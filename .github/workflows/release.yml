@@ -1,0 +1,132 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  build:
+    name: ${{ matrix.name }}
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # GitHub no longer offers Intel macOS runners, so both slices are
+          # cross-compiled/built on Apple Silicon runners.
+          - name: macOS (Apple Silicon)
+            platform: macos-latest
+            target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+          - name: macOS (Intel)
+            platform: macos-latest
+            target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin
+          - name: Linux
+            platform: ubuntu-22.04
+            target: ""
+            args: ""
+          - name: Windows
+            platform: windows-latest
+            target: ""
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.target }}
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+      - name: Install NASM (vendored OpenSSL)
+        if: matrix.platform == 'windows-latest'
+        run: choco install nasm -y
+      - run: pnpm install --frozen-lockfile
+      # macOS builds are signed and notarized. This step fails loudly if the
+      # APPLE_* secrets are missing, so a release never ships unsigned mac
+      # artifacts by accident.
+      #   APPLE_CERTIFICATE          base64 of the Developer ID .p12
+      #   APPLE_CERTIFICATE_PASSWORD .p12 password
+      #   APPLE_SIGNING_IDENTITY     "Developer ID Application: Name (TEAMID)"
+      #   APPLE_ID / APPLE_PASSWORD  Apple ID + app-specific password
+      #   APPLE_TEAM_ID              team identifier
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Coffer ${{ github.ref_name }}
+          releaseBody: See the assets below to download and install this version.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+      # Windows Authenticode signing is configured in tauri.conf.json under
+      # bundle.windows (certificateThumbprint + timestampUrl, or signCommand
+      # pointing at AzureSignTool for Azure Trusted Signing). Linux packages
+      # are unsigned; sign the apt/rpm repository metadata separately if you
+      # host one.
+      - name: Build (Windows / Linux)
+        if: runner.os != 'macOS'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Coffer ${{ github.ref_name }}
+          releaseBody: See the assets below to download and install this version.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

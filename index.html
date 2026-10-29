@@ -1,14 +1,21 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tauri + React + Typescript</title>
+    <meta name="color-scheme" content="dark" />
+    <title>Coffer</title>
+    <script>
+      // Dark-only app: apply before first paint to avoid a light flash.
+      document.documentElement.classList.add("dark");
+      document.documentElement.style.colorScheme = "dark";
+    </script>
   </head>
 
   <body>
     <div id="root"></div>
+    <noscript>Coffer requires JavaScript.</noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

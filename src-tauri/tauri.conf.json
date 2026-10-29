@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "coffer-desktop",
+  "productName": "Coffer",
   "version": "0.1.0",
   "identifier": "com.luozhouyang.coffer",
   "build": {
@@ -10,15 +10,22 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "withGlobalTauri": false,
     "windows": [
       {
-        "title": "coffer-desktop",
-        "width": 800,
-        "height": 600
+        "label": "main",
+        "title": "Coffer",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 1080,
+        "minHeight": 720,
+        "center": true,
+        "resizable": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; img-src 'self' asset: data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src ipc: http://ipc.localhost",
+      "devCsp": "default-src 'self'; img-src 'self' asset: data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src ipc: http://ipc.localhost http://localhost:1420 ws://localhost:1420 http://127.0.0.1:1420 ws://127.0.0.1:1420"
     }
   },
   "bundle": {
@@ -30,6 +37,12 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "category": "DeveloperTools",
+    "shortDescription": "Local-first encrypted secrets manager for developers",
+    "copyright": "Copyright © 2026 luozhouyang",
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    }
   }
 }

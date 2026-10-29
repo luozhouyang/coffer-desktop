@@ -1,12 +1,29 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-// @ts-expect-error type error without @types/node package
+import tailwindcss from "@tailwindcss/vite";
+import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
-  plugins: [react()],
+  plugins: [
+    tanstackRouter({
+      target: "react",
+      autoCodeSplitting: false,
+      // Generated tree is committed (src/routeTree.gen.ts).
+    }),
+    react(),
+    tailwindcss(),
+  ],
+
+  resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+    },
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
@@ -28,5 +45,16 @@ export default defineConfig(() => ({
       // 3. tell Vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],
     },
+  },
+
+  // Single-app bundle; the size warning is noise for a desktop shell.
+  build: { chunkSizeWarningLimit: 1200 },
+
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: ["./src/test/setup.ts"],
+    css: false,
+    include: ["src/**/*.test.{ts,tsx}"],
   },
 }));
