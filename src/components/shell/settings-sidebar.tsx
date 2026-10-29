@@ -1,6 +1,6 @@
 import { Link, useMatchRoute, useSearch } from "@tanstack/react-router";
 import { ArrowUpCircle, Lock, ShieldCheck } from "lucide-react";
-import { useLockVault } from "@/app/queries";
+import { useVault } from "@/app/vault-context";
 import { Brand } from "@/components/common/brand";
 import { SIDEBAR_STYLE } from "@/components/shell/app-sidebar";
 import {
@@ -29,7 +29,7 @@ export function SettingsSidebar() {
   const search = useSearch({ strict: false }) as Record<string, unknown>;
   const { setOpenMobile, isMobile } = useSidebar();
   const matchRoute = useMatchRoute();
-  const lockMutation = useLockVault();
+  const { lock } = useVault();
   const backSearch: Record<string, string | undefined> = {};
   if (typeof search.project === "string") backSearch.project = search.project;
   if (typeof search.kind === "string") backSearch.kind = search.kind;
@@ -77,7 +77,7 @@ export function SettingsSidebar() {
         <SidebarSeparator className="mb-1" />
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton tooltip="Lock vault" onClick={() => lockMutation.mutate()} disabled={lockMutation.isPending}>
+            <SidebarMenuButton tooltip="Lock vault" onClick={() => void lock()}>
               <Lock className="size-4" strokeWidth={1.8} aria-hidden />
               <span>Lock vault</span>
             </SidebarMenuButton>

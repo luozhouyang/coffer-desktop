@@ -29,6 +29,10 @@ export function createTauriIpc(): IpcClient {
     vaultTouchActivity: () => call("vault_touch_activity"),
     vaultChangePassword: (oldPassword, newPassword) =>
       call("vault_change_password", { oldPassword, newPassword }),
+    vaultKeychainStatus: () => call("vault_keychain_status"),
+    vaultKeychainEnable: (password) => call("vault_keychain_enable", { password }),
+    vaultKeychainDisable: () => call("vault_keychain_disable"),
+    vaultUnlockKeychain: () => call("vault_unlock_keychain"),
 
     settingsGet: () => call("settings_get"),
     settingsSet: (settings) => call("settings_set", { settings }),

@@ -9,6 +9,7 @@ import {
   type ItemInput,
   type ItemMeta,
   type ItemUpdate,
+  type KeychainStatus,
   type Project,
   type ProjectInput,
   type ProjectUpdate,
@@ -34,6 +35,7 @@ export interface MockIpc extends IpcClient {
     readonly initialized: boolean;
     readonly unlocked: boolean;
     readonly settings: Settings;
+    readonly keychain: KeychainStatus;
     deletedProjects: string[];
     copied: string[];
   };
@@ -280,9 +282,21 @@ function toDetail(item: SeedItem & { id: string }): ItemDetail {
   return { ...toMeta(item), notes: item.notes ?? null, hasSecret: Boolean(item.secret) };
 }
 
-export function createMockIpc(options: { delayMs?: number; password?: string } = {}): MockIpc {
+export function createMockIpc(
+  options: {
+    delayMs?: number;
+    password?: string;
+    /** Mirrors `KeychainStatus.supported`; opt in per test for determinism. */
+    keychainSupported?: boolean;
+    /** Biometric hardware present and enrolled. Defaults to `keychainSupported`. */
+    keychainAvailable?: boolean;
+  } = {},
+): MockIpc {
   const delay = options.delayMs ?? 0;
   let password = options.password ?? MASTER_PASSWORD;
+  const keychainSupported = options.keychainSupported ?? false;
+  const keychainAvailable = options.keychainAvailable ?? keychainSupported;
+  let keychainEnabled = false;
 
   let initialized = true;
   let unlocked = true;
@@ -351,6 +365,12 @@ export function createMockIpc(options: { delayMs?: number; password?: string } =
     counts: unlocked ? counts() : { all: 0, unassigned: 0, projects: [] },
   });
 
+  const keychainStatus = (): KeychainStatus => ({
+    supported: keychainSupported,
+    available: keychainAvailable,
+    enabled: keychainEnabled,
+  });
+
   const requireItem = (id: string) => {
     const item = items.get(id);
     if (!item) throw new IpcError("notFound", "Secret not found.");
@@ -372,6 +392,9 @@ export function createMockIpc(options: { delayMs?: number; password?: string } =
       get settings() {
         return { ...settings };
       },
+      get keychain() {
+        return keychainStatus();
+      },
       deletedProjects: [],
       copied: [],
     } as MockIpc["__state"],
@@ -389,6 +412,7 @@ export function createMockIpc(options: { delayMs?: number; password?: string } =
       initialized = false;
       unlocked = false;
       locked = false;
+      keychainEnabled = false;
     },
     __onLocked: (fn) => {
       stateListeners.push(fn);
@@ -426,6 +450,36 @@ export function createMockIpc(options: { delayMs?: number; password?: string } =
         guard();
         if (oldPw !== password) throw new IpcError("invalidPassword", "Incorrect master password.");
         password = newPw;
+      }),
+
+    vaultKeychainStatus: () => tick(() => keychainStatus()),
+    vaultKeychainEnable: (pw) =>
+      tick(() => {
+        guard();
+        if (pw !== password) throw new IpcError("invalidPassword", "Incorrect master password.");
+        if (!keychainSupported || !keychainAvailable) {
+          throw new IpcError("keychainUnavailable", "Biometric unlock is not available on this device.");
+        }
+        keychainEnabled = true;
+        return keychainStatus();
+      }),
+    vaultKeychainDisable: () =>
+      tick(() => {
+        keychainEnabled = false;
+        return keychainStatus();
+      }),
+    vaultUnlockKeychain: () =>
+      tick(() => {
+        if (!initialized) throw new IpcError("vaultNotInitialized", "No vault exists yet.");
+        if (!keychainEnabled) {
+          throw new IpcError("keychainUnavailable", "No biometric key is stored.");
+        }
+        if (!keychainSupported || !keychainAvailable) {
+          throw new IpcError("keychainUnavailable", "Biometric unlock is not available on this device.");
+        }
+        unlocked = true;
+        locked = false;
+        return status();
       }),
 
     settingsGet: () => tick(() => {
@@ -598,7 +652,7 @@ export function createMockIpc(options: { delayMs?: number; password?: string } =
         guard();
         const item = requireItem(id);
         item.category = category;
-        item.categorySource = "manual";
+        item.categorySource = category ? "manual" : "default";
         item.updatedAt = Date.now();
         return toMeta(item);
       }),

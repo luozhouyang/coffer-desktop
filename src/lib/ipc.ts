@@ -7,6 +7,7 @@ import type {
   ItemInput,
   ItemMeta,
   ItemUpdate,
+  KeychainStatus,
   LockWarningPayload,
   Project,
   ProjectInput,
@@ -38,6 +39,13 @@ export interface IpcClient {
   vaultLock(): Promise<void>;
   vaultTouchActivity(): Promise<void>;
   vaultChangePassword(oldPassword: string, newPassword: string): Promise<void>;
+  /** Any state. Biometric unlock is macOS-only; other platforms report supported: false. */
+  vaultKeychainStatus(): Promise<KeychainStatus>;
+  /** Requires unlock and the master password. */
+  vaultKeychainEnable(password: string): Promise<KeychainStatus>;
+  vaultKeychainDisable(): Promise<KeychainStatus>;
+  /** Restores the master key after the system prompts for biometry. */
+  vaultUnlockKeychain(): Promise<VaultStatus>;
 
   /** Requires unlock. */
   settingsGet(): Promise<Settings>;

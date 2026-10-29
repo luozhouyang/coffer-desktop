@@ -19,6 +19,7 @@ pub enum ErrorCode {
     Conflict,
     Validation,
     Io,
+    KeychainUnavailable,
     Internal,
 }
 
@@ -43,6 +44,7 @@ impl fmt::Display for ErrorCode {
             ErrorCode::Conflict => "conflict",
             ErrorCode::Validation => "validation",
             ErrorCode::Io => "io",
+            ErrorCode::KeychainUnavailable => "keychainUnavailable",
             ErrorCode::Internal => "internal",
         })
     }
@@ -80,6 +82,9 @@ impl AppError {
         // without leaking paths or content.
         let _ = e;
         Self::new(ErrorCode::Io, "storage I/O error")
+    }
+    pub fn keychain_unavailable(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::KeychainUnavailable, message)
     }
     pub fn internal(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::Internal, message)

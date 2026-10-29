@@ -4,8 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createMockIpc } from "@/lib/mock-ipc";
 import { renderApp, waitForPath } from "@/test/render-app";
 
-async function openSettings() {
-  const ipc = createMockIpc();
+async function openSettings(ipc = createMockIpc()) {
   const rendered = renderApp({ ipc, initialHref: "/settings/security" });
   await waitForPath(rendered.router, "/settings/security");
   await screen.findByRole("heading", { level: 1, name: "Security" });
@@ -74,5 +73,63 @@ describe("security settings", () => {
     await waitForPath(router, "/");
     expect(router.state.location.search).toMatchObject({ project: "p-orbit" });
     expect(within(document.querySelector('[data-slot="sidebar-container"]') as HTMLElement).queryByText("Projects")).toBeInTheDocument();
+  });
+
+  it("hides the Touch ID section where the platform has no biometric keychain", async () => {
+    const ipc = createMockIpc();
+    const statusSpy = vi.spyOn(ipc, "vaultKeychainStatus");
+    await openSettings(ipc);
+    await waitFor(() => expect(statusSpy).toHaveBeenCalled());
+    expect(screen.queryByText("Biometric unlock")).not.toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "Unlock with Touch ID" })).not.toBeInTheDocument();
+  });
+
+  it("enables Touch ID after confirming the master password", async () => {
+    const ipc = createMockIpc({ keychainSupported: true });
+    const enableSpy = vi.spyOn(ipc, "vaultKeychainEnable");
+    await openSettings(ipc);
+    const user = userEvent.setup();
+
+    const toggle = await screen.findByRole("switch", { name: "Unlock with Touch ID" });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    await user.click(toggle);
+
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/Master password/), "coffer");
+    await user.click(within(dialog).getByRole("button", { name: "Enable" }));
+
+    await waitFor(() => expect(enableSpy).toHaveBeenCalledWith("coffer"));
+    expect(await screen.findByRole("switch", { name: "Unlock with Touch ID" })).toHaveAttribute("aria-checked", "true");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("keeps Touch ID off when the master password is wrong", async () => {
+    const ipc = createMockIpc({ keychainSupported: true });
+    await openSettings(ipc);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("switch", { name: "Unlock with Touch ID" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/Master password/), "wrong-password");
+    await user.click(within(dialog).getByRole("button", { name: "Enable" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Incorrect master password.");
+    expect(ipc.__state.keychain.enabled).toBe(false);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("turns Touch ID off without asking for the password again", async () => {
+    const ipc = createMockIpc({ keychainSupported: true });
+    await ipc.vaultKeychainEnable("coffer");
+    const disableSpy = vi.spyOn(ipc, "vaultKeychainDisable");
+    await openSettings(ipc);
+
+    const toggle = await screen.findByRole("switch", { name: "Unlock with Touch ID" });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    await userEvent.setup().click(toggle);
+
+    await waitFor(() => expect(disableSpy).toHaveBeenCalled());
+    expect(screen.getByRole("switch", { name: "Unlock with Touch ID" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

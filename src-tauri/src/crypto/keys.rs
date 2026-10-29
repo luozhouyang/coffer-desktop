@@ -31,6 +31,17 @@ impl MasterKey {
         Self(mk)
     }
 
+    /// Rebuilds a master key from raw bytes, e.g. one restored from the
+    /// biometric keychain.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, AppError> {
+        if bytes.len() != KEY_LEN {
+            return Err(AppError::internal("invalid master key length"));
+        }
+        let mut mk = Zeroizing::new([0u8; KEY_LEN]);
+        mk.copy_from_slice(bytes);
+        Ok(Self(mk))
+    }
+
     fn as_ref(&self) -> &[u8; KEY_LEN] {
         &self.0
     }
@@ -193,6 +204,16 @@ mod tests {
         let mk = unlock_with_header(&header, "correct horse").unwrap();
         let again = unlock_with_header(&header, "correct horse").unwrap();
         assert_eq!(mk.as_ref(), again.as_ref());
+    }
+
+    #[test]
+    fn from_bytes_roundtrips_and_rejects_wrong_length() {
+        let dir = tempfile::tempdir().unwrap();
+        let header = create_at(dir.path(), "correct horse");
+        let mk = unlock_with_header(&header, "correct horse").unwrap();
+        let restored = MasterKey::from_bytes(mk.expose()).unwrap();
+        assert_eq!(mk.as_ref(), restored.as_ref());
+        assert!(MasterKey::from_bytes(&[0u8; 31]).is_err());
     }
 
     #[test]

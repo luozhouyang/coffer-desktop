@@ -61,6 +61,84 @@ describe("item editor sheet", () => {
     expect(await within(list).findByText("Fresh Stripe key")).toBeInTheDocument();
   });
 
+  it("stores the exact secret typed while masked and preserves it across show/hide", async () => {
+    const { ipc } = await openVault();
+    const createSpy = vi.spyOn(ipc, "itemCreate");
+    const user = userEvent.setup();
+
+    await user.click(screen.getAllByRole("button").find((b) => b.textContent?.trim() === "New")!);
+    const sheet = await screen.findByRole("dialog");
+    await user.type(await within(sheet).findByLabelText(/^Title$/), "Masked key");
+
+    // Masking is visual only: typing must keep the real value in the DOM, not
+    // append to bullet glyphs (which previously corrupted the stored secret).
+    const secret = within(sheet).getByLabelText("Secret");
+    await user.type(secret, "sk_live_masked_value_42");
+    expect(secret).toHaveValue("sk_live_masked_value_42");
+
+    await user.click(within(sheet).getByRole("button", { name: "Show secret" }));
+    expect(within(sheet).getByLabelText("Secret")).toHaveValue("sk_live_masked_value_42");
+    await user.click(within(sheet).getByRole("button", { name: "Hide secret" }));
+    expect(within(sheet).getByLabelText("Secret")).toHaveValue("sk_live_masked_value_42");
+
+    await user.click(within(sheet).getByRole("button", { name: /^Save/ }));
+    await waitFor(() => expect(createSpy).toHaveBeenCalledTimes(1));
+    expect(createSpy.mock.calls[0][0]).toMatchObject({
+      kind: "apiKey",
+      title: "Masked key",
+      secret: "sk_live_masked_value_42",
+    });
+  });
+
+  it("creates a password item with a manually chosen category", async () => {
+    const { ipc } = await openVault();
+    const createSpy = vi.spyOn(ipc, "itemCreate");
+    const setCategorySpy = vi.spyOn(ipc, "itemSetCategory");
+    const user = userEvent.setup();
+
+    await user.click(screen.getAllByRole("button").find((b) => b.textContent?.trim() === "New")!);
+    const sheet = await screen.findByRole("dialog");
+    await user.click(within(sheet).getByRole("radio", { name: "Password" }));
+    await user.type(await within(sheet).findByLabelText(/^Title$/), "Masked password");
+    await user.type(within(sheet).getByLabelText("Secret"), "s3cr3t-pass-42");
+
+    await user.click(within(sheet).getByRole("combobox", { name: "Category" }));
+    await user.click(await screen.findByRole("option", { name: "Payments" }));
+    await user.click(within(sheet).getByRole("button", { name: /^Save/ }));
+
+    await waitFor(() => expect(createSpy).toHaveBeenCalledTimes(1));
+    expect(createSpy.mock.calls[0][0]).toMatchObject({
+      kind: "password",
+      title: "Masked password",
+      secret: "s3cr3t-pass-42",
+    });
+    await waitFor(() => expect(setCategorySpy).toHaveBeenCalledWith(expect.any(String), "Payments"));
+  });
+
+  it("clears an existing category back to the default on edit", async () => {
+    const { ipc, router } = await openVault();
+    const setCategorySpy = vi.spyOn(ipc, "itemSetCategory");
+    const user = userEvent.setup();
+
+    const list = screen.getByTestId("vault-list");
+    await within(list).findByText("Stripe live");
+    await user.click(within(list).getByText("Stripe live"));
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/item\//));
+
+    const editButton = await screen.findByRole("button", { name: "Edit secret" });
+    await waitFor(() => expect(editButton).toBeEnabled());
+    await user.click(editButton);
+    const sheet = await screen.findByRole("dialog");
+
+    const category = await within(sheet).findByRole("combobox", { name: "Category" });
+    await waitFor(() => expect(category).toHaveTextContent("Payments"));
+    await user.click(category);
+    await user.click(await screen.findByRole("option", { name: "Uncategorized (default)" }));
+    await user.click(within(sheet).getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(setCategorySpy).toHaveBeenCalledWith(expect.any(String), null));
+  });
+
   it("applies a classify_preview suggestion (manual category)", async () => {
     const { ipc } = await openVault();
     const classifySpy = vi.spyOn(ipc, "classifyPreview");
@@ -94,6 +172,7 @@ describe("item editor sheet", () => {
   it("edits an existing item and keeps the secret when left blank", async () => {
     const { ipc, router } = await openVault();
     const updateSpy = vi.spyOn(ipc, "itemUpdate");
+    const setCategorySpy = vi.spyOn(ipc, "itemSetCategory");
     const user = userEvent.setup();
 
     const list = screen.getByTestId("vault-list");
@@ -115,6 +194,8 @@ describe("item editor sheet", () => {
     const input = updateSpy.mock.calls[0][0];
     expect(input).toMatchObject({ title: "Stripe production" });
     expect(input).not.toHaveProperty("secret");
+    // Saving without touching the category must not overwrite it.
+    expect(setCategorySpy).not.toHaveBeenCalled();
   });
 
   it("blocks closing with unsaved changes until confirmed", async () => {

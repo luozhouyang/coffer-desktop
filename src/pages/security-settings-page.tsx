@@ -1,5 +1,13 @@
-import { AlertTriangle, KeyRound, ShieldCheck } from "lucide-react";
-import { useSettings, useSaveSettings, useVaultStatus } from "@/app/queries";
+import { useState } from "react";
+import { AlertTriangle, Fingerprint, KeyRound, ShieldCheck } from "lucide-react";
+import {
+  useDisableKeychain,
+  useEnableKeychain,
+  useKeychainStatus,
+  useSettings,
+  useSaveSettings,
+  useVaultStatus,
+} from "@/app/queries";
 import { useVault } from "@/app/vault-context";
 import { errorMessage } from "@/lib/ipc-errors";
 import type { Settings } from "@/lib/ipc-types";
@@ -7,6 +15,8 @@ import { formatDuration } from "@/lib/format";
 import { ErrorState, InlineSpinner } from "@/components/common/status-bits";
 import { NoRecoveryNotice } from "@/components/common/no-recovery-notice";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
@@ -33,6 +43,40 @@ export function SecuritySettingsPage() {
   const statusQuery = useVaultStatus();
   const save = useSaveSettings();
   const { lock } = useVault();
+  const keychainQuery = useKeychainStatus();
+  const enableKeychain = useEnableKeychain();
+  const disableKeychain = useDisableKeychain();
+  const keychain = keychainQuery.data;
+
+  const [touchIdOpen, setTouchIdOpen] = useState(false);
+  const [touchIdPassword, setTouchIdPassword] = useState("");
+  const [touchIdError, setTouchIdError] = useState<string | null>(null);
+
+  const onTouchIdToggle = (checked: boolean) => {
+    if (checked) {
+      setTouchIdPassword("");
+      setTouchIdError(null);
+      setTouchIdOpen(true);
+      return;
+    }
+    disableKeychain.mutate(undefined, {
+      onSuccess: () => toast.success("Touch ID unlock turned off"),
+      onError: (err) => toast.error("Could not turn off Touch ID", { description: errorMessage(err) }),
+    });
+  };
+
+  const submitTouchId = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setTouchIdError(null);
+    try {
+      await enableKeychain.mutateAsync(touchIdPassword);
+      setTouchIdOpen(false);
+      setTouchIdPassword("");
+      toast.success("Touch ID unlock enabled");
+    } catch (err) {
+      setTouchIdError(errorMessage(err));
+    }
+  };
 
   const update = (patch: Partial<Settings>) => {
     const current = settingsQuery.data;
@@ -105,6 +149,34 @@ export function SecuritySettingsPage() {
           />
         </div>
       </section>
+
+      {keychain?.supported ? (
+        <section className="mt-8 space-y-4" aria-labelledby="touch-id-heading">
+          <h2 id="touch-id-heading" className="text-[13px] font-semibold">
+            Biometric unlock
+          </h2>
+          <div className="rounded-[14px] border border-border bg-card">
+            <SettingRow
+              title="Unlock with Touch ID"
+              description={
+                !keychain.available
+                  ? "Touch ID is not set up on this Mac. Add a fingerprint in System Settings first."
+                  : keychain.enabled
+                    ? "The vault key stays in the macOS keychain and is released only after Touch ID. Your master password still works."
+                    : "Skip typing your master password at launch. Enabling stores the vault key in the macOS keychain, protected by Touch ID."
+              }
+              control={
+                <Switch
+                  checked={keychain.enabled}
+                  disabled={!keychain.available || enableKeychain.isPending || disableKeychain.isPending}
+                  onCheckedChange={onTouchIdToggle}
+                  aria-label="Unlock with Touch ID"
+                />
+              }
+            />
+          </div>
+        </section>
+      ) : null}
 
       <section className="mt-8 space-y-4" aria-labelledby="clipboard-heading">
         <h2 id="clipboard-heading" className="text-[13px] font-semibold">
@@ -192,6 +264,61 @@ export function SecuritySettingsPage() {
           <InlineSpinner className="size-3" /> Saving…
         </p>
       ) : null}
+
+      <Dialog
+        open={touchIdOpen}
+        onOpenChange={(open) => {
+          if (enableKeychain.isPending) return;
+          setTouchIdOpen(open);
+          if (!open) {
+            setTouchIdPassword("");
+            setTouchIdError(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <div className="flex items-center gap-2 text-[13px] font-semibold">
+              <Fingerprint className="size-4 text-[#E2A75A]" aria-hidden /> Enable Touch ID
+            </div>
+            <DialogTitle className="sr-only">Enable Touch ID</DialogTitle>
+            <DialogDescription>
+              Enter your master password once. Coffer stores the vault key in the macOS keychain with a Touch ID
+              requirement; the key never leaves this Mac.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={(event) => void submitTouchId(event)} className="space-y-3" noValidate>
+            <div>
+              <Label htmlFor="touch-id-password">Master password</Label>
+              <Input
+                id="touch-id-password"
+                type="password"
+                autoFocus
+                autoComplete="current-password"
+                value={touchIdPassword}
+                onChange={(event) => setTouchIdPassword(event.target.value)}
+                className="mt-1.5 h-10 font-mono"
+              />
+            </div>
+            {touchIdError ? (
+              <p role="alert" className="rounded-md border border-[#3A1F23] bg-[#261214] px-3 py-2 text-[12px] text-[#F6DCDF]">
+                {touchIdError}
+              </p>
+            ) : null}
+            <div className="flex justify-end gap-2 pt-1">
+              <DialogClose asChild>
+                <Button type="button" variant="ghost" disabled={enableKeychain.isPending}>
+                  Cancel
+                </Button>
+              </DialogClose>
+              <Button type="submit" disabled={enableKeychain.isPending || touchIdPassword.length === 0}>
+                {enableKeychain.isPending ? <InlineSpinner /> : null}
+                {enableKeychain.isPending ? "Enabling…" : "Enable"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

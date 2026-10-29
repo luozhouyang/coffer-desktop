@@ -20,6 +20,7 @@ const KNOWN_CODES: ReadonlySet<string> = new Set<ErrorCode>([
   "conflict",
   "validation",
   "io",
+  "keychainUnavailable",
   "internal",
 ]);
 
@@ -59,6 +60,7 @@ const MESSAGES: Record<ErrorCode, string> = {
   conflict: "A conflicting item already exists.",
   validation: "The input is not valid.",
   io: "Could not read or write vault data.",
+  keychainUnavailable: "Biometric unlock is not available.",
   internal: "Something went wrong.",
 };
 

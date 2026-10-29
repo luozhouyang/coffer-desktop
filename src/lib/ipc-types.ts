@@ -21,6 +21,7 @@ export type ErrorCode =
   | "conflict"
   | "validation"
   | "io"
+  | "keychainUnavailable"
   | "internal";
 
 /** Fixed category display strings. "Uncategorized" is the default bucket. */
@@ -127,6 +128,16 @@ export interface VaultStatus {
   unlocked: boolean;
   autoLockSecs: number;
   counts: SidebarCounts;
+}
+
+/**
+ * Biometric unlock state. `supported` is false on platforms without a
+ * biometric keychain (everything except macOS), so clients hide the feature.
+ */
+export interface KeychainStatus {
+  supported: boolean;
+  available: boolean;
+  enabled: boolean;
 }
 
 export interface Settings {
