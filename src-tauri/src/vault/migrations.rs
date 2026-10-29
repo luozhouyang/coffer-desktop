@@ -17,20 +17,13 @@ pub const SCHEMA_VERSION: i64 = match MIGRATIONS.last() {
     None => 0,
 };
 
-/// Tokenizer chosen at migration time after probing the build.
+/// FTS5 tokenizer actually in use for a database. New databases always use
+/// `Trigram`; `Unicode61` is only read back from databases created by older
+/// builds, because the tokenizer cannot be changed after table creation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FtsTokenizer {
     Trigram,
     Unicode61,
-}
-
-impl FtsTokenizer {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            FtsTokenizer::Trigram => "trigram",
-            FtsTokenizer::Unicode61 => "unicode61",
-        }
-    }
 }
 
 /// Returns the FTS tokenizer actually created for this database, read back
