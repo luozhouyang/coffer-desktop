@@ -16,6 +16,7 @@ import { ItemEditorSheet } from "@/components/editor/item-editor-sheet";
 import { ProjectDialogs } from "@/components/projects/project-dialogs";
 import { Kbd } from "@/components/common/kbd";
 import { LockWarningBanner } from "@/components/shell/lock-warning-banner";
+import { UpdateChecker } from "@/components/shell/update-checker";
 import { VaultProvider } from "@/app/vault-context";
 
 function RootComponent() {
@@ -33,6 +34,7 @@ function RootComponent() {
         <ItemEditorSheet />
         <ProjectDialogs />
         <LockWarningBanner />
+        <UpdateChecker />
       </TooltipProvider>
       <Toaster position="top-center" offset={16} richColors closeButton />
     </VaultProvider>
