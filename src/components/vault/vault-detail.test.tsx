@@ -79,6 +79,64 @@ describe("vault list and detail", () => {
     expect(screen.getByTestId("secret-value")).toHaveTextContent("••••");
   });
 
+  it("reveals the exact secret created while the input was masked", async () => {
+    const { router } = await openVault();
+    const user = userEvent.setup();
+
+    await user.click(screen.getAllByRole("button").find((b) => b.textContent?.trim() === "New")!);
+    const sheet = await screen.findByRole("dialog");
+    await user.click(within(sheet).getByRole("radio", { name: "Password" }));
+    await user.type(await within(sheet).findByLabelText(/^Title$/), "Masked password");
+    // Do not click "Show": typing happens while the field is visually masked.
+    await user.type(within(sheet).getByLabelText("Secret"), "s3cr3t-pass-42");
+    await user.click(within(sheet).getByRole("button", { name: /^Save/ }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    const list = screen.getByTestId("vault-list");
+    const title = await within(list).findByText("Masked password");
+    const row = title.closest("[data-item-id]");
+    expect(row).toBeTruthy();
+    await router.navigate({ to: "/item/$itemId", params: { itemId: row!.getAttribute("data-item-id")! } });
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/item\//));
+
+    await user.click(await screen.findByRole("button", { name: "Reveal secret" }));
+    const secret = await screen.findByTestId("secret-value");
+    await waitFor(() => expect(secret).toHaveAttribute("data-revealed", "true"));
+    expect(secret).toHaveTextContent("s3cr3t-pass-42");
+  });
+
+  it("renders the type filter as a fixed five-tab group", async () => {
+    const { router } = await openVault();
+    const user = userEvent.setup();
+    const group = screen.getByRole("group", { name: "Filter by type" });
+    for (const name of ["All secrets", "API keys", ".env", "Passwords", "Notes"]) {
+      expect(within(group).getByRole("button", { name })).toBeInTheDocument();
+    }
+
+    await user.click(within(group).getByRole("button", { name: "Notes" }));
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ kind: "note" }));
+    expect(within(group).getByRole("button", { name: "Notes" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("filters the list by category and clears the filter", async () => {
+    const { router } = await openVault();
+    const user = userEvent.setup();
+    const list = screen.getByTestId("vault-list");
+    await within(list).findByText("OpenAI production");
+    expect(within(list).getByText("Stripe live")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("combobox", { name: "Filter by category" }));
+    await user.click(await screen.findByRole("option", { name: "Payments" }));
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ category: "Payments" }));
+    await waitFor(() => expect(within(list).queryByText("OpenAI production")).not.toBeInTheDocument());
+    expect(within(list).getByText("Stripe live")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("combobox", { name: "Filter by category" }));
+    await user.click(await screen.findByRole("option", { name: "All categories" }));
+    await waitFor(() => expect(router.state.location.search).not.toHaveProperty("category"));
+    expect(await within(list).findByText("OpenAI production")).toBeInTheDocument();
+  });
+
   it("shows the kind chips and empty-set copy for an empty filter", async () => {
     await openVault("/?project=unassigned&kind=env");
     expect(await screen.findByText("No secrets here yet")).toBeInTheDocument();

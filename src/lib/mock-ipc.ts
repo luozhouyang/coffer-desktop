@@ -598,7 +598,7 @@ export function createMockIpc(options: { delayMs?: number; password?: string } =
         guard();
         const item = requireItem(id);
         item.category = category;
-        item.categorySource = "manual";
+        item.categorySource = category ? "manual" : "default";
         item.updatedAt = Date.now();
         return toMeta(item);
       }),

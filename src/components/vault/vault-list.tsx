@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { KeyRound, Plus, SearchX } from "lucide-react";
+import { KeyRound, Plus, SearchX, Tag } from "lucide-react";
 import { useItems, useProjects } from "@/app/queries";
 import { uiStore } from "@/app/ui-store";
-import type { ItemFilter, ItemKind, ItemMeta } from "@/lib/ipc-types";
-import { relativeTime, hostFromUrl, maskPreview, KIND_SHORT_LABELS, KIND_LABELS } from "@/lib/format";
+import { CATEGORIES, type ItemFilter, type ItemKind, type ItemMeta } from "@/lib/ipc-types";
+import { relativeTime, hostFromUrl, maskPreview, KIND_LABELS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { isUnassignedFilter, parseVaultSearch, projectFilterId, toVaultLinkSearch } from "@/lib/vault-filter";
 import { CategoryBadge } from "@/components/common/category-badge";
 import { KindIcon } from "@/components/common/kind-icon";
 import { SortSelect, type SortKey } from "@/components/common/sort-select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmptyState, ErrorState, ListSkeleton } from "@/components/common/status-bits";
 import { ProjectDot } from "@/components/common/project-chip";
 import { projectColor } from "@/lib/categories";
@@ -19,13 +20,14 @@ import { errorMessage } from "@/lib/ipc-errors";
 
 const VIRTUALIZE_THRESHOLD = 200;
 const ROW_HEIGHT = 76;
+const ALL_CATEGORIES = "__all__";
 
-const KIND_CHIPS: { key: ItemKind | "all"; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "apiKey", label: KIND_SHORT_LABELS.apiKey },
-  { key: "env", label: KIND_SHORT_LABELS.env },
-  { key: "password", label: KIND_SHORT_LABELS.password },
-  { key: "note", label: KIND_SHORT_LABELS.note },
+const KIND_CHIPS: { key: ItemKind | "all"; label: string; ariaLabel: string }[] = [
+  { key: "all", label: "All", ariaLabel: "All secrets" },
+  { key: "apiKey", label: "Keys", ariaLabel: "API keys" },
+  { key: "env", label: ".env", ariaLabel: ".env" },
+  { key: "password", label: "Passwords", ariaLabel: "Passwords" },
+  { key: "note", label: "Notes", ariaLabel: "Notes" },
 ];
 
 export function VaultList({ search }: { search: Record<string, unknown> }) {
@@ -58,6 +60,12 @@ export function VaultList({ search }: { search: Record<string, unknown> }) {
 
   const items = useMemo(() => {
     let list: ItemMeta[] = itemsQuery.data ? [...itemsQuery.data] : [];
+    if (filter.category) {
+      const wanted = filter.category;
+      list = list.filter((i) =>
+        wanted === "Uncategorized" ? !i.category || i.category === "Uncategorized" : i.category === wanted,
+      );
+    }
     if (filter.q) {
       const q = filter.q.toLowerCase();
       list = list.filter(
@@ -72,12 +80,20 @@ export function VaultList({ search }: { search: Record<string, unknown> }) {
     else if (sort === "created") list.sort((a, b) => b.createdAt - a.createdAt);
     else list.sort((a, b) => b.updatedAt - a.updatedAt);
     return list;
-  }, [filter.q, itemsQuery.data, sort]);
+  }, [filter.category, filter.q, itemsQuery.data, sort]);
 
   const setKind = (kind: ItemKind | null) => {
     void navigate({
       to: "/",
       search: toVaultLinkSearch({ ...filter, kind: kind ?? undefined }) as never,
+      replace: true,
+    });
+  };
+
+  const setCategory = (category: string | null) => {
+    void navigate({
+      to: "/",
+      search: toVaultLinkSearch({ ...filter, category: category ?? undefined }) as never,
       replace: true,
     });
   };
@@ -105,28 +121,57 @@ export function VaultList({ search }: { search: Record<string, unknown> }) {
             New
           </Button>
         </div>
-        <div className="mt-3 flex items-center justify-between gap-2">
-          <div role="group" aria-label="Filter by type" className="flex min-w-0 items-center gap-1 overflow-x-auto">
-            {KIND_CHIPS.map((chip) => {
-              const active = chip.key === "all" ? !filter.kind : filter.kind === chip.key;
-              return (
-                <button
-                  key={chip.key}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setKind(chip.key === "all" ? null : chip.key)}
-                  className={cn(
-                    "h-6 shrink-0 rounded-full border px-2.5 text-[11px] font-medium transition-colors",
-                    active
-                      ? "border-[#4A3720] bg-[#2A2114] text-[#E2A75A]"
-                      : "border-transparent text-muted-foreground hover:bg-accent hover:text-foreground",
-                  )}
-                >
-                  {chip.label}
-                </button>
-              );
-            })}
-          </div>
+        <div
+          role="group"
+          aria-label="Filter by type"
+          className="mt-3 grid grid-cols-5 gap-0.5 rounded-[8px] border border-[#262D38] bg-[#0F131A] p-0.5"
+        >
+          {KIND_CHIPS.map((chip) => {
+            const active = chip.key === "all" ? !filter.kind : filter.kind === chip.key;
+            return (
+              <button
+                key={chip.key}
+                type="button"
+                aria-label={chip.ariaLabel}
+                aria-pressed={active}
+                onClick={() => setKind(chip.key === "all" ? null : chip.key)}
+                className={cn(
+                  "h-7 min-w-0 rounded-[6px] px-1 text-[11px] font-medium transition-colors",
+                  active
+                    ? "bg-[#2A2114] text-[#E2A75A] shadow-[inset_0_0_0_1px_#4A3720]"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                )}
+              >
+                <span className="block truncate">{chip.label}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <Select
+            value={filter.category ?? ALL_CATEGORIES}
+            onValueChange={(value) => setCategory(value === ALL_CATEGORIES ? null : value)}
+          >
+            <SelectTrigger
+              size="sm"
+              aria-label="Filter by category"
+              className={cn(
+                "h-8 w-auto max-w-[180px] gap-1.5 border-transparent bg-transparent px-2 text-[11px] hover:bg-accent",
+                filter.category ? "text-[#E2A75A]" : "text-muted-foreground",
+              )}
+            >
+              <Tag className="size-3.5 shrink-0" aria-hidden />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="start">
+              <SelectItem value={ALL_CATEGORIES}>All categories</SelectItem>
+              {CATEGORIES.map((category) => (
+                <SelectItem key={category} value={category}>
+                  {category}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <SortSelect value={sort} onChange={setSort} />
         </div>
       </header>
@@ -143,7 +188,7 @@ export function VaultList({ search }: { search: Record<string, unknown> }) {
         {itemsQuery.isSuccess && items.length === 0 ? (
           <EmptyState
             icon={<KeyRound className="size-5" aria-hidden />}
-            title={filter.q ? "No matches" : "No secrets here yet"}
+            title={filter.q || filter.category ? "No matches" : "No secrets here yet"}
             description={
               filter.q
                 ? "Try a different search term or clear the filter."
