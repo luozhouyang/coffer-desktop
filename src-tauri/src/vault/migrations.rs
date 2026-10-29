@@ -1,89 +1,21 @@
 //! Versioned schema migrations, applied inside a transaction.
+//!
+//! Each migration is a plain SQL file under `src-tauri/migrations/`, embedded
+//! at compile time. Files are named `NNNN_<slug>.sql` and applied in version
+//! order; `MIGRATIONS` must stay contiguous starting at 1.
 
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::error::AppError;
 
-/// Highest schema version this build knows about.
-pub const SCHEMA_VERSION: i64 = 1;
+/// Embedded migrations as `(version, sql)`, applied in order.
+const MIGRATIONS: &[(i64, &str)] = &[(1, include_str!("../../migrations/0001_init.sql"))];
 
-const V1: &[&str] = &[
-    r#"CREATE TABLE projects (
-        id          TEXT PRIMARY KEY,
-        name        TEXT NOT NULL COLLATE NOCASE,
-        description TEXT,
-        color       TEXT,
-        archived_at INTEGER,
-        created_at  INTEGER NOT NULL,
-        updated_at  INTEGER NOT NULL
-    )"#,
-    r#"CREATE UNIQUE INDEX projects_active_name
-        ON projects(name) WHERE archived_at IS NULL"#,
-    r#"CREATE TABLE items (
-        id              TEXT PRIMARY KEY,
-        kind            TEXT NOT NULL
-                        CHECK (kind IN ('apiKey','env','password','note')),
-        title           TEXT NOT NULL,
-        username        TEXT,
-        url             TEXT,
-        project_id      TEXT REFERENCES projects(id) ON DELETE SET NULL,
-        secret          TEXT NOT NULL,
-        notes           TEXT,
-        category        TEXT,
-        category_source TEXT NOT NULL DEFAULT 'default'
-                        CHECK (category_source IN ('manual','rule','import','default')),
-        favorite        INTEGER NOT NULL DEFAULT 0,
-        created_at      INTEGER NOT NULL,
-        updated_at      INTEGER NOT NULL,
-        deleted_at      INTEGER
-    )"#,
-    r#"CREATE TABLE tags (
-        id    TEXT PRIMARY KEY,
-        name  TEXT NOT NULL UNIQUE,
-        color TEXT
-    )"#,
-    r#"CREATE TABLE item_tags (
-        item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
-        tag_id  TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
-        PRIMARY KEY (item_id, tag_id)
-    )"#,
-    "CREATE INDEX item_tags_tag ON item_tags(tag_id)",
-    "CREATE INDEX items_project ON items(project_id, updated_at DESC)",
-    "CREATE INDEX items_unassigned ON items(updated_at DESC) WHERE project_id IS NULL",
-    "CREATE INDEX items_updated ON items(updated_at DESC) WHERE deleted_at IS NULL",
-    r#"CREATE TABLE audit_log (
-        id      INTEGER PRIMARY KEY AUTOINCREMENT,
-        ts      INTEGER NOT NULL,
-        action  TEXT NOT NULL,
-        item_id TEXT,
-        meta    TEXT
-    )"#,
-    "CREATE INDEX audit_log_item ON audit_log(item_id, ts DESC)",
-    // External-content FTS index; rows are maintained by application code
-    // (see `db::reindex_fts`) because the tags column aggregates item_tags.
-    // `%FTS_OPTIONS%` is resolved by `fts_options`.
-    r#"CREATE VIRTUAL TABLE items_fts USING fts5(
-        title, username, url, notes, tags,
-        content='',
-        %FTS_OPTIONS%
-        tokenize='%TOKENIZER%'
-    )"#,
-];
-
-/// Returns the FTS5 options line: `contentless_delete=1` when the build
-/// supports it (SQLite >= 3.43), otherwise an empty string.
-pub fn fts_options(conn: &Connection) -> &'static str {
-    let ok = conn
-        .execute_batch(
-            "CREATE VIRTUAL TABLE temp.__coffer_cld_probe USING fts5(x, content='', \
-             contentless_delete=1)",
-        )
-        .is_ok()
-        && conn
-            .execute_batch("DROP TABLE temp.__coffer_cld_probe")
-            .is_ok();
-    if ok { "contentless_delete=1," } else { "" }
-}
+/// Highest schema version this build knows about (0 when there are none).
+pub const SCHEMA_VERSION: i64 = match MIGRATIONS.last() {
+    Some((version, _)) => *version,
+    None => 0,
+};
 
 /// Tokenizer chosen at migration time after probing the build.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,13 +31,6 @@ impl FtsTokenizer {
             FtsTokenizer::Unicode61 => "unicode61",
         }
     }
-}
-
-/// Probes whether the SQLite build supports the FTS5 `trigram` tokenizer.
-pub fn detect_trigram(conn: &Connection) -> bool {
-    conn.execute_batch("CREATE VIRTUAL TABLE temp.__coffer_probe USING fts5(x, tokenize='trigram')")
-        .is_ok()
-        && conn.execute_batch("DROP TABLE temp.__coffer_probe").is_ok()
 }
 
 /// Returns the FTS tokenizer actually created for this database, read back
@@ -135,7 +60,7 @@ pub fn current_version(conn: &Connection) -> Result<i64, AppError> {
 }
 
 /// Applies all migrations needed to reach [`SCHEMA_VERSION`] in one
-/// transaction. Returns the tokenizer chosen for this run.
+/// transaction. Returns the FTS tokenizer in use for this database.
 pub fn migrate(conn: &Connection) -> Result<FtsTokenizer, AppError> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -148,36 +73,33 @@ pub fn migrate(conn: &Connection) -> Result<FtsTokenizer, AppError> {
         return Err(AppError::internal("vault schema is newer than this app"));
     }
 
-    let tokenizer = if current < 1 {
-        if detect_trigram(conn) {
-            FtsTokenizer::Trigram
-        } else {
-            FtsTokenizer::Unicode61
-        }
-    } else {
-        detect_tokenizer(conn).ok_or_else(|| AppError::internal("missing search index"))?
-    };
+    let pending: Vec<(i64, &str)> = MIGRATIONS
+        .iter()
+        .filter(|(version, _)| *version > current)
+        .copied()
+        .collect();
 
-    if current < SCHEMA_VERSION {
+    if !pending.is_empty() {
         let tx = conn.unchecked_transaction()?;
         let now = super::db::now_ms();
-        if current < 1 {
-            let options = fts_options(&tx);
-            for stmt in V1 {
-                let sql = stmt
-                    .replace("%TOKENIZER%", tokenizer.as_str())
-                    .replace("%FTS_OPTIONS%", options);
-                tx.execute_batch(&sql)?;
-            }
+        for (version, sql) in pending {
+            tx.execute_batch(sql)?;
             tx.execute(
-                "INSERT INTO schema_migrations(version, applied_at) VALUES (1, ?1)",
-                params![now],
+                "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, ?2)",
+                params![version, now],
             )?;
-            tx.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))?;
+            tx.execute_batch(&format!("PRAGMA user_version = {version}"))?;
         }
         tx.commit()?;
     }
-    Ok(tokenizer)
+
+    if current < SCHEMA_VERSION {
+        // Fresh schema: 0001 creates the FTS5 index with the `trigram`
+        // tokenizer, which the bundled SQLite build always supports.
+        Ok(FtsTokenizer::Trigram)
+    } else {
+        detect_tokenizer(conn).ok_or_else(|| AppError::internal("missing search index"))
+    }
 }
 
 #[cfg(test)]
@@ -243,16 +165,28 @@ mod tests {
     }
 
     #[test]
-    fn trigram_probe_does_not_leave_tables() {
-        let c = mem();
-        let _ = detect_trigram(&c);
-        let n: i64 = c
-            .query_row(
-                "SELECT count(*) FROM sqlite_master WHERE name='__coffer_probe'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(n, 0);
+    fn migrations_are_contiguous() {
+        for (index, (version, _)) in MIGRATIONS.iter().enumerate() {
+            assert_eq!(
+                *version,
+                index as i64 + 1,
+                "migrations must start at 1 and increment by exactly 1"
+            );
+        }
+        assert_eq!(SCHEMA_VERSION, MIGRATIONS.len() as i64);
+    }
+
+    #[test]
+    fn migrations_have_no_placeholders() {
+        for (version, sql) in MIGRATIONS {
+            assert!(
+                !sql.contains("%TOKENIZER%"),
+                "migration {version} has %TOKENIZER%"
+            );
+            assert!(
+                !sql.contains("%FTS_OPTIONS%"),
+                "migration {version} has %FTS_OPTIONS%"
+            );
+        }
     }
 }
