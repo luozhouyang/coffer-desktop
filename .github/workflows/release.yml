@@ -109,6 +109,24 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+      # Tauri notarizes the .app but not the .dmg; a quarantined, unnotarized
+      # disk image is blocked by Gatekeeper, so notarize and staple it here,
+      # then replace the asset tauri-action already uploaded.
+      - name: Notarize and staple DMG
+        if: runner.os == 'macOS'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          DMG="$(find src-tauri/target -path '*/release/bundle/dmg/*.dmg' -print -quit)"
+          test -n "$DMG"
+          echo "Notarizing $DMG"
+          xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+          gh release upload "${{ github.ref_name }}" "$DMG" --clobber
       # Windows Authenticode signing is configured in tauri.conf.json under
       # bundle.windows (certificateThumbprint + timestampUrl, or signCommand
       # pointing at AzureSignTool for Azure Trusted Signing). Linux packages
