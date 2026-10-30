@@ -1,5 +1,7 @@
 import type {
   AuditEntry,
+  BackupExportResult,
+  BackupPreview,
   Classification,
   CopyResult,
   ItemDetail,
@@ -46,6 +48,28 @@ export interface IpcClient {
   vaultKeychainDisable(): Promise<KeychainStatus>;
   /** Restores the master key after the system prompts for biometry. */
   vaultUnlockKeychain(): Promise<VaultStatus>;
+
+  /**
+   * Writes the whole vault into one `.coffer` file protected by the master
+   * password. Requires unlock; the password is re-checked by the backend.
+   * Progress arrives on `backup://export-progress`.
+   */
+  backupExport(destination: string, password: string): Promise<BackupExportResult>;
+  /**
+   * Same as `backupExport`, authenticated by Touch ID / the cached master key.
+   * Requires biometric unlock to be enabled; the password path remains the
+   * fallback.
+   */
+  backupExportKeychain(destination: string): Promise<BackupExportResult>;
+  /**
+   * Validates a `.coffer` file and opens a restore session. Only allowed
+   * before a vault exists. Progress arrives on `backup://restore-progress`.
+   */
+  backupRestoreBegin(path: string, password: string): Promise<BackupPreview>;
+  /** Commits a restore session; the restored vault comes back unlocked. */
+  backupRestoreCommit(sessionId: string): Promise<VaultStatus>;
+  /** Drops a restore session and its temporary copy. */
+  backupRestoreCancel(sessionId: string): Promise<void>;
 
   /** Requires unlock. */
   settingsGet(): Promise<Settings>;

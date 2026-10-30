@@ -3,6 +3,7 @@
 //! modules. Errors are always [`AppError`] / `{ code, message }`.
 
 pub mod audit;
+pub mod backup;
 pub mod items;
 pub mod keychain;
 pub mod projects;
@@ -11,6 +12,10 @@ pub mod settings;
 pub mod vault;
 
 pub use audit::audit_list;
+pub use backup::{
+    backup_export, backup_export_keychain, backup_restore_begin, backup_restore_cancel,
+    backup_restore_commit,
+};
 pub use items::{
     classify_preview, copy_secret, item_create, item_delete, item_get, item_reveal_secret,
     item_set_category, item_set_project, item_toggle_favorite, item_update, items_list,

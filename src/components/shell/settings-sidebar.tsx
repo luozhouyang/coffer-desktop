@@ -1,5 +1,5 @@
 import { Link, useSearch } from "@tanstack/react-router";
-import { Lock, ShieldCheck } from "lucide-react";
+import { Archive, Lock, ShieldCheck } from "lucide-react";
 import { useVault } from "@/app/vault-context";
 import { Brand } from "@/components/common/brand";
 import { SIDEBAR_STYLE } from "@/components/shell/app-sidebar";
@@ -18,10 +18,14 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-// Only Security ships in this milestone; Backup/About are intentionally not
-// routed yet, so we do not list them (no placeholder pages).
-const SECTIONS: { label: string; icon: typeof ShieldCheck; to: "/settings/security" | null }[] = [
+// About is intentionally not routed yet, so it is not listed (no placeholder pages).
+const SECTIONS: {
+  label: string;
+  icon: typeof ShieldCheck;
+  to: "/settings/security" | "/settings/backup" | null;
+}[] = [
   { label: "Security", icon: ShieldCheck, to: "/settings/security" },
+  { label: "Backup", icon: Archive, to: "/settings/backup" },
 ];
 
 export function SettingsSidebar() {

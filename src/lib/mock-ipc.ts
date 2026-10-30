@@ -4,6 +4,9 @@ import {
   DEFAULTS,
   EVENTS,
   type AuditEntry,
+  type BackupExportResult,
+  type BackupPreview,
+  type BackupProgressPayload,
   type ItemDetail,
   type ItemFilter,
   type ItemInput,
@@ -28,6 +31,15 @@ import {
  */
 
 const MASTER_PASSWORD = "coffer";
+const MOCK_VAULT_ID = "0199a0c0-0000-7000-8000-000000000001";
+const MOCK_APP_VERSION = "0.1.0";
+const MOCK_SCHEMA_VERSION = 1;
+
+const copyProject = (p: Project): Project => ({ ...p });
+const copyItem = (i: SeedItem & { id: string }): SeedItem & { id: string } => ({
+  ...i,
+  tags: [...(i.tags ?? [])],
+});
 
 export interface MockIpc extends IpcClient {
   /** Test helpers (not part of the production IPC surface). */
@@ -38,6 +50,9 @@ export interface MockIpc extends IpcClient {
     readonly keychain: KeychainStatus;
     deletedProjects: string[];
     copied: string[];
+    /** `.coffer` archive produced by the last export (or injected via `__seedBackup`). */
+    readonly backupArchive: MockBackupArchive | null;
+    readonly restoreSessions: number;
   };
   /** Event bus: emits `vault://locked`, `vault://lock-warning`, … to listeners. */
   __emit(event: IpcEventName, payload?: unknown): void;
@@ -47,6 +62,27 @@ export interface MockIpc extends IpcClient {
   __setPassword(password: string): void;
   /** Fires for `vault://locked` even if the event was emitted before mounting. */
   __onLocked(fn: () => void): () => void;
+  /** Puts a saved archive in place without an export (e.g. "restored from another Mac"). */
+  __seedBackup(archive: Partial<MockBackupArchive>): void;
+}
+
+interface MockBackupSnapshot {
+  projects: Project[];
+  items: Map<string, SeedItem & { id: string }>;
+  secrets: Map<string, string>;
+}
+
+/** The mock's in-memory stand-in for a `.coffer` file. */
+export interface MockBackupArchive {
+  password: string;
+  vaultId: string;
+  createdAtMs: number;
+  appVersion: string;
+  schemaVersion: number;
+  itemCount: number;
+  projectCount: number;
+  tagCount: number;
+  snapshot: MockBackupSnapshot | null;
 }
 
 let seq = 0;
@@ -332,6 +368,9 @@ export function createMockIpc(
   const secrets = new Map<string, string>();
   for (const item of items.values()) secrets.set(item.id, item.secret);
 
+  let backupArchive: MockBackupArchive | null = null;
+  const restoreSessions = new Map<string, { preview: BackupPreview; archive: MockBackupArchive }>();
+
   const listeners = new Map<string, Set<(payload: unknown) => void>>();
   const emit = (event: IpcEventName, payload: unknown = null) => {
     for (const fn of listeners.get(event) ?? []) fn(payload);
@@ -377,6 +416,52 @@ export function createMockIpc(
     return item;
   };
 
+  /** Emits a few throttled progress events so the UI can render a bar. */
+  const emitProgress = async (event: IpcEventName, phases: string[]) => {
+    for (let i = 0; i < phases.length; i++) {
+      if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+      emit(event, { phase: phases[i], done: i + 1, total: phases.length } satisfies BackupProgressPayload);
+    }
+  };
+
+  const validateMockExportDestination = (destination: string) => {
+    const destinationPath = typeof destination === "string" ? destination : "";
+    if (!destinationPath.startsWith("/") || destinationPath.endsWith("/coffer")) {
+      throw new IpcError("validation", "The destination path is not valid.");
+    }
+    if (!destinationPath.endsWith(".coffer")) {
+      throw new IpcError("validation", "The file name must end in .coffer.");
+    }
+    return destinationPath;
+  };
+
+  const writeMockArchive = (destinationPath: string, archivePassword: string): BackupExportResult => {
+    const activeProjects = projects.filter((p) => !p.archivedAt);
+    const itemCount = items.size;
+    backupArchive = {
+      password: archivePassword,
+      vaultId: MOCK_VAULT_ID,
+      createdAtMs: Date.now(),
+      appVersion: MOCK_APP_VERSION,
+      schemaVersion: MOCK_SCHEMA_VERSION,
+      itemCount,
+      projectCount: activeProjects.length,
+      tagCount: new Set([...items.values()].flatMap((i) => i.tags ?? [])).size,
+      snapshot: {
+        projects: projects.map(copyProject),
+        items: new Map([...items.entries()].map(([id, item]) => [id, copyItem(item)])),
+        secrets: new Map(secrets),
+      },
+    };
+    return {
+      path: destinationPath,
+      bytes: 65_536 + itemCount * 4_096,
+      itemCount,
+      projectCount: activeProjects.length,
+      createdAtMs: backupArchive.createdAtMs,
+    } satisfies BackupExportResult;
+  };
+
   const refreshProjectCounts = () => {
     for (const p of projects) p.itemCount = [...items.values()].filter((i) => i.projectId === p.id).length;
   };
@@ -397,6 +482,12 @@ export function createMockIpc(
       },
       deletedProjects: [],
       copied: [],
+      get backupArchive() {
+        return backupArchive;
+      },
+      get restoreSessions() {
+        return restoreSessions.size;
+      },
     } as MockIpc["__state"],
     __emit: (event, payload = null) => {
       if (event === EVENTS.locked) {
@@ -413,6 +504,21 @@ export function createMockIpc(
       unlocked = false;
       locked = false;
       keychainEnabled = false;
+      restoreSessions.clear();
+    },
+    __seedBackup: (patch) => {
+      backupArchive = {
+        password: password,
+        vaultId: MOCK_VAULT_ID,
+        createdAtMs: daysAgo(1),
+        appVersion: MOCK_APP_VERSION,
+        schemaVersion: MOCK_SCHEMA_VERSION,
+        itemCount: items.size,
+        projectCount: projects.length,
+        tagCount: new Set([...items.values()].flatMap((i) => i.tags ?? [])).size,
+        snapshot: null,
+        ...patch,
+      };
     },
     __onLocked: (fn) => {
       stateListeners.push(fn);
@@ -450,6 +556,81 @@ export function createMockIpc(
         guard();
         if (oldPw !== password) throw new IpcError("invalidPassword", "Incorrect master password.");
         password = newPw;
+      }),
+
+    backupExport: async (destination, pw) => {
+      guard();
+      const destinationPath = validateMockExportDestination(destination);
+      await emitProgress(EVENTS.backupExportProgress, ["verify", "snapshot", "encrypt", "done"]);
+      return tick(() => {
+        if (pw !== password) throw new IpcError("invalidPassword", "Incorrect master password.");
+        return writeMockArchive(destinationPath, password);
+      });
+    },
+    backupExportKeychain: async (destination) => {
+      guard();
+      if (!keychainSupported || !keychainAvailable || !keychainEnabled) {
+        throw new IpcError("keychainUnavailable", "Touch ID export is not enabled.");
+      }
+      const destinationPath = validateMockExportDestination(destination);
+      await emitProgress(EVENTS.backupExportProgress, ["verify", "snapshot", "encrypt", "done"]);
+      return tick(() => writeMockArchive(destinationPath, password));
+    },
+    backupRestoreBegin: async (path, pw) => {
+      if (initialized) throw new IpcError("alreadyInitialized", "Restore is only available before a vault is created.");
+      if (typeof path !== "string" || !path.endsWith(".coffer")) {
+        throw new IpcError("unsupportedFormat", "This backup file is not supported.");
+      }
+      if (!backupArchive) throw new IpcError("notFound", "No backup file was selected.");
+      const archive = backupArchive;
+      await emitProgress(EVENTS.backupRestoreProgress, ["verify", "decrypt", "validate"]);
+      return tick(() => {
+        if (pw !== archive.password) throw new IpcError("invalidPassword", "Incorrect master password.");
+        const sessionId = nextId("restore");
+        const preview: BackupPreview = {
+          sessionId,
+          sourceVaultId: archive.vaultId,
+          createdAtMs: archive.createdAtMs,
+          appVersion: archive.appVersion,
+          schemaVersion: archive.schemaVersion,
+          itemCount: archive.itemCount,
+          projectCount: archive.projectCount,
+          tagCount: archive.tagCount,
+        };
+        restoreSessions.set(sessionId, { preview, archive });
+        return preview;
+      });
+    },
+    backupRestoreCommit: async (sessionId) => {
+      const pending = restoreSessions.get(sessionId);
+      if (!pending) throw new IpcError("notFound", "This restore session has expired.");
+      if (initialized) {
+        restoreSessions.delete(sessionId);
+        throw new IpcError("alreadyInitialized", "A vault already exists.");
+      }
+      await emitProgress(EVENTS.backupRestoreProgress, ["commit", "done"]);
+      return tick(() => {
+        const session = restoreSessions.get(sessionId);
+        if (!session) throw new IpcError("notFound", "This restore session has expired.");
+        const { archive } = session;
+        restoreSessions.delete(sessionId);
+        if (archive.snapshot) {
+          projects.splice(0, projects.length, ...archive.snapshot.projects.map(copyProject));
+          items.clear();
+          secrets.clear();
+          for (const [id, item] of archive.snapshot.items) items.set(id, copyItem(item));
+          for (const [id, value] of archive.snapshot.secrets) secrets.set(id, value);
+        }
+        initialized = true;
+        unlocked = true;
+        locked = false;
+        password = archive.password;
+        return status();
+      });
+    },
+    backupRestoreCancel: (sessionId) =>
+      tick(() => {
+        restoreSessions.delete(sessionId);
       }),
 
     vaultKeychainStatus: () => tick(() => keychainStatus()),

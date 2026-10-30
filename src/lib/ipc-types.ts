@@ -22,6 +22,7 @@ export type ErrorCode =
   | "validation"
   | "io"
   | "keychainUnavailable"
+  | "unsupportedFormat"
   | "internal";
 
 /** Fixed category display strings. "Uncategorized" is the default bucket. */
@@ -192,10 +193,43 @@ export const EVENTS = {
   locked: "vault://locked",
   lockWarning: "vault://lock-warning",
   clipboardCleared: "clipboard://cleared",
+  backupExportProgress: "backup://export-progress",
+  backupRestoreProgress: "backup://restore-progress",
 } as const;
 
 export interface LockWarningPayload {
   seconds: number;
+}
+
+/* ------------------------------------------------------------- backup */
+
+/** Result of `backup_export`. Never contains secret material. */
+export interface BackupExportResult {
+  path: string;
+  bytes: number;
+  itemCount: number;
+  projectCount: number;
+  createdAtMs: number;
+}
+
+/** Preview of a validated `.coffer` file; `sessionId` is passed to commit/cancel. */
+export interface BackupPreview {
+  sessionId: string;
+  sourceVaultId: string;
+  createdAtMs: number;
+  appVersion: string;
+  schemaVersion: number;
+  itemCount: number;
+  projectCount: number;
+  tagCount: number;
+}
+
+/** Payload of `backup://export-progress` / `backup://restore-progress`. */
+export interface BackupProgressPayload {
+  /** e.g. verify | snapshot | encrypt | decrypt | commit | done */
+  phase: string;
+  done: number;
+  total: number;
 }
 
 /* ------------------------------------------------------- default values */

@@ -72,10 +72,25 @@ export const commands = {
 	classifyPreview: (title: string, value: string, url: string | null) => typedError<Classification_Serialize, AppError>(__TAURI_INVOKE("classify_preview", { title, value, url })),
 	/**  `audit_list` */
 	auditList: (itemId: string) => typedError<AuditEntry_Serialize[], AppError>(__TAURI_INVOKE("audit_list", { itemId })),
+	/**  `backup_export`: writes an encrypted `.coffer` of the whole vault. */
+	backupExport: (destination: string, password: string) => typedError<BackupExportResult, AppError>(__TAURI_INVOKE("backup_export", { destination, password })),
+	/**
+	 *  `backup_export_keychain`: export authenticated by Touch ID / the cached
+	 *  master key. Requires biometric unlock to be enabled in Settings.
+	 */
+	backupExportKeychain: (destination: string) => typedError<BackupExportResult, AppError>(__TAURI_INVOKE("backup_export_keychain", { destination })),
+	/**  `backup_restore_begin`: verifies an archive and returns a commit preview. */
+	backupRestoreBegin: (path: string, password: string) => typedError<BackupPreview, AppError>(__TAURI_INVOKE("backup_restore_begin", { path, password })),
+	/**  `backup_restore_commit`: swaps in the verified DB and unlocks it. */
+	backupRestoreCommit: (sessionId: string) => typedError<VaultStatus, AppError>(__TAURI_INVOKE("backup_restore_commit", { sessionId })),
+	/**  `backup_restore_cancel`: discards the preview and its temp DB. */
+	backupRestoreCancel: (sessionId: string) => typedError<null, AppError>(__TAURI_INVOKE("backup_restore_cancel", { sessionId })),
 };
 
 /** Events */
 export const events = {
+	backupExportProgress: makeEvent<BackupExportProgressEvent, BackupExportProgressEvent>("backup://export-progress"),
+	backupRestoreProgress: makeEvent<BackupRestoreProgressEvent, BackupRestoreProgressEvent>("backup://restore-progress"),
 	clipboardCleared: makeEvent<ClipboardClearedEvent, ClipboardClearedEvent>("clipboard://cleared"),
 	vaultLockWarning: makeEvent<LockWarningEvent, LockWarningEvent>("vault://lock-warning"),
 	vaultLocked: makeEvent<LockedEvent, LockedEvent>("vault://locked"),
@@ -107,6 +122,40 @@ export type AuditEntry_Serialize = {
 	createdAt: number,
 };
 
+/**  `backup://export-progress` — `{ phase, done, total }`. */
+export type BackupExportProgressEvent = BackupProgress;
+
+/**  Result of `backup_export`. */
+export type BackupExportResult = {
+	path: string,
+	bytes: number,
+	itemCount: number,
+	projectCount: number,
+	createdAtMs: number,
+};
+
+/**  Result of `backup_restore_begin`; also names the session to commit. */
+export type BackupPreview = {
+	sessionId: string,
+	sourceVaultId: string,
+	createdAtMs: number,
+	appVersion: string,
+	schemaVersion: number,
+	itemCount: number,
+	projectCount: number,
+	tagCount: number,
+};
+
+/**  Payload of `backup://export-progress` and `backup://restore-progress`. */
+export type BackupProgress = {
+	phase: string,
+	done: number,
+	total: number,
+};
+
+/**  `backup://restore-progress` — `{ phase, done, total }`. */
+export type BackupRestoreProgressEvent = BackupProgress;
+
 export type CategorySource = "manual" | "rule" | "import" | "default";
 
 export type Classification = Classification_Serialize | Classification_Deserialize;
@@ -136,7 +185,7 @@ export type CopyResult = {
  *  Error codes from the IPC contract. `#[serde(rename_all = "camelCase")]`
  *  produces `invalidPassword`, `vaultNotInitialized`, `alreadyInitialized`.
  */
-export type ErrorCode = "locked" | "invalidPassword" | "vaultNotInitialized" | "alreadyInitialized" | "notFound" | "conflict" | "validation" | "io" | "keychainUnavailable" | "internal";
+export type ErrorCode = "locked" | "invalidPassword" | "vaultNotInitialized" | "alreadyInitialized" | "notFound" | "conflict" | "validation" | "io" | "keychainUnavailable" | "unsupportedFormat" | "internal";
 
 export type ItemDetail = ItemDetail_Serialize | ItemDetail_Deserialize;
 

@@ -5,6 +5,7 @@
 //! See `docs/IPC_CONTRACT.md` for the authoritative command surface.
 
 pub mod autolock;
+pub mod backup;
 pub mod classify;
 pub mod clipboard;
 pub mod commands;
@@ -27,7 +28,8 @@ use tauri_specta::{Builder, Event, collect_commands, collect_events};
 
 use crate::commands::search::search;
 use crate::commands::{
-    audit_list, classify_preview, copy_secret, item_create, item_delete, item_get,
+    audit_list, backup_export, backup_export_keychain, backup_restore_begin, backup_restore_cancel,
+    backup_restore_commit, classify_preview, copy_secret, item_create, item_delete, item_get,
     item_reveal_secret, item_set_category, item_set_project, item_toggle_favorite, item_update,
     items_list, project_create, project_delete, project_update, projects_list, settings_get,
     settings_set, sidebar_counts, vault_change_password, vault_create, vault_keychain_disable,
@@ -37,7 +39,10 @@ use crate::commands::{
 
 use crate::autolock::Tick;
 use crate::clipboard::{ArboardClipboard, ClipboardManager};
-use crate::events::{ClipboardClearedEvent, LockWarningEvent, LockedEvent};
+use crate::events::{
+    BackupExportProgressEvent, BackupRestoreProgressEvent, ClipboardClearedEvent, LockWarningEvent,
+    LockedEvent,
+};
 use crate::keychain::PlatformKeychain;
 use crate::models::events::LockWarning;
 use crate::state::AppState;
@@ -81,11 +86,18 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             search,
             classify_preview,
             audit_list,
+            backup_export,
+            backup_export_keychain,
+            backup_restore_begin,
+            backup_restore_commit,
+            backup_restore_cancel,
         ])
         .events(collect_events![
             LockedEvent,
             LockWarningEvent,
-            ClipboardClearedEvent
+            ClipboardClearedEvent,
+            BackupExportProgressEvent,
+            BackupRestoreProgressEvent
         ])
 }
 
@@ -166,11 +178,16 @@ pub fn run() {
     let invoke_handler = builder.invoke_handler();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(invoke_handler)
         .setup(move |app| {
             builder.mount_events(app);
             let root = data_root(app.handle())?;
             let state = build_state(root);
+            // Sessions died with the previous process; their temp files did not.
+            if let Err(e) = crate::backup::session::cleanup_on_startup(state.paths.root()) {
+                eprintln!("coffer: backup temp cleanup failed ({})", e.code);
+            }
             app.manage(state);
             spawn_background_tasks(app.handle().clone());
             Ok(())
@@ -216,6 +233,11 @@ mod tests {
         "search",
         "classify_preview",
         "audit_list",
+        "backup_export",
+        "backup_export_keychain",
+        "backup_restore_begin",
+        "backup_restore_commit",
+        "backup_restore_cancel",
     ];
 
     fn export() -> String {
@@ -248,9 +270,16 @@ mod tests {
             "vault://locked",
             "vault://lock-warning",
             "clipboard://cleared",
+            "backup://export-progress",
+            "backup://restore-progress",
         ] {
             assert!(text.contains(event), "missing event {event}");
         }
+        assert!(text.contains("export type BackupProgress = {"));
+        assert!(text.contains("export type BackupExportResult = {"));
+        assert!(text.contains("export type BackupPreview = {"));
+        assert!(text.contains("export type BackupExportProgressEvent = BackupProgress;"));
+        assert!(text.contains("export type BackupRestoreProgressEvent = BackupProgress;"));
         // Events payloads per contract §4.
         assert!(text.contains("export type LockedEvent = null;"));
         assert!(text.contains("export type ClipboardClearedEvent = null;"));

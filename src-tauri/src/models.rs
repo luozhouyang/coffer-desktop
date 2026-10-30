@@ -19,6 +19,16 @@ pub mod events {
     pub struct LockWarning {
         pub seconds: u32,
     }
+
+    /// Payload of `backup://export-progress` and `backup://restore-progress`.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+    pub struct BackupProgress {
+        pub phase: String,
+        #[specta(type = Number)]
+        pub done: i64,
+        #[specta(type = Number)]
+        pub total: i64,
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, Hash)]
@@ -200,6 +210,40 @@ pub struct ItemFilter {
     pub kind: Option<ItemKind>,
     #[serde(default)]
     pub favorite_only: Option<bool>,
+}
+
+/// Result of `backup_export`.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupExportResult {
+    pub path: String,
+    #[specta(type = Number)]
+    pub bytes: i64,
+    #[specta(type = Number)]
+    pub item_count: i64,
+    #[specta(type = Number)]
+    pub project_count: i64,
+    #[specta(type = Number)]
+    pub created_at_ms: i64,
+}
+
+/// Result of `backup_restore_begin`; also names the session to commit.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupPreview {
+    pub session_id: String,
+    pub source_vault_id: String,
+    #[specta(type = Number)]
+    pub created_at_ms: i64,
+    pub app_version: String,
+    #[specta(type = Number)]
+    pub schema_version: i64,
+    #[specta(type = Number)]
+    pub item_count: i64,
+    #[specta(type = Number)]
+    pub project_count: i64,
+    #[specta(type = Number)]
+    pub tag_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]

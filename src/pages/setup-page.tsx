@@ -3,13 +3,14 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useNavigate } from "@tanstack/react-router";
-import { Eye, EyeOff, KeyRound, ShieldAlert } from "lucide-react";
+import { Eye, EyeOff, KeyRound, RotateCcw, ShieldAlert } from "lucide-react";
 import { useCreateVault } from "@/app/queries";
 import { passwordStrength, STRENGTH_META } from "@/lib/password";
 import { errorMessage } from "@/lib/ipc-errors";
 import { BrandMark } from "@/components/common/brand";
 import { NoRecoveryNotice } from "@/components/common/no-recovery-notice";
 import { InlineSpinner } from "@/components/common/status-bits";
+import { RestoreBackupDialog } from "@/components/backup/restore-backup-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +36,7 @@ export function SetupPage() {
   const createVault = useCreateVault();
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [restoreOpen, setRestoreOpen] = useState(false);
 
   const form = useForm<SetupValues>({
     resolver: zodResolver(setupSchema),
@@ -166,6 +168,24 @@ export function SetupPage() {
             Keys are derived on this device and never leave it. Back up your vault file yourself.
           </p>
         </div>
+
+        <div className="mt-4 rounded-[14px] border border-border bg-card p-4">
+          <p className="text-[13px] font-medium">Already have a backup?</p>
+          <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
+            Restore a vault exported from another device. This is only possible before a vault is created here,
+            and it replaces this device's empty vault.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-3 h-9 w-full gap-2 text-[13px]"
+            onClick={() => setRestoreOpen(true)}
+          >
+            <RotateCcw className="size-4" aria-hidden /> Restore from backup
+          </Button>
+        </div>
+
+        <RestoreBackupDialog open={restoreOpen} onOpenChange={setRestoreOpen} />
       </div>
     </div>
   );

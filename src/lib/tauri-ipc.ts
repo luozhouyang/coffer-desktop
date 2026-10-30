@@ -34,6 +34,12 @@ export function createTauriIpc(): IpcClient {
     vaultKeychainDisable: () => call("vault_keychain_disable"),
     vaultUnlockKeychain: () => call("vault_unlock_keychain"),
 
+    backupExport: (destination, password) => call("backup_export", { destination, password }),
+    backupExportKeychain: (destination) => call("backup_export_keychain", { destination }),
+    backupRestoreBegin: (path, password) => call("backup_restore_begin", { path, password }),
+    backupRestoreCommit: (sessionId) => call("backup_restore_commit", { sessionId }),
+    backupRestoreCancel: (sessionId) => call("backup_restore_cancel", { sessionId }),
+
     settingsGet: () => call("settings_get"),
     settingsSet: (settings) => call("settings_set", { settings }),
     sidebarCounts: () => call("sidebar_counts"),

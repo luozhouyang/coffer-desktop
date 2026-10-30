@@ -21,6 +21,7 @@ const KNOWN_CODES: ReadonlySet<string> = new Set<ErrorCode>([
   "validation",
   "io",
   "keychainUnavailable",
+  "unsupportedFormat",
   "internal",
 ]);
 
@@ -61,6 +62,7 @@ const MESSAGES: Record<ErrorCode, string> = {
   validation: "The input is not valid.",
   io: "Could not read or write vault data.",
   keychainUnavailable: "Biometric unlock is not available.",
+  unsupportedFormat: "This backup file is not supported.",
   internal: "Something went wrong.",
 };
 

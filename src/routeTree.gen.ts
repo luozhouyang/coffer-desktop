@@ -15,6 +15,7 @@ import { Route as SetupRouteImport } from './routes/setup'
 import { Route as UnlockRouteImport } from './routes/unlock'
 import { Route as VaultIndexRouteImport } from './routes/_vault.index'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
+import { Route as SettingsBackupRouteImport } from './routes/settings.backup'
 import { Route as SettingsSecurityRouteImport } from './routes/settings.security'
 import { Route as VaultItemItemIdRouteImport } from './routes/_vault.item.$itemId'
 
@@ -47,6 +48,11 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsBackupRoute = SettingsBackupRouteImport.update({
+  id: '/backup',
+  path: '/backup',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsSecurityRoute = SettingsSecurityRouteImport.update({
   id: '/security',
   path: '/security',
@@ -63,6 +69,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRouteWithChildren
   '/setup': typeof SetupRoute
   '/unlock': typeof UnlockRoute
+  '/settings/backup': typeof SettingsBackupRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/settings/': typeof SettingsIndexRoute
   '/item/$itemId': typeof VaultItemItemIdRoute
@@ -70,6 +77,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/setup': typeof SetupRoute
   '/unlock': typeof UnlockRoute
+  '/settings/backup': typeof SettingsBackupRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/': typeof VaultIndexRoute
   '/settings': typeof SettingsIndexRoute
@@ -81,6 +89,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRouteWithChildren
   '/setup': typeof SetupRoute
   '/unlock': typeof UnlockRoute
+  '/settings/backup': typeof SettingsBackupRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/_vault/': typeof VaultIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -93,6 +102,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/setup'
     | '/unlock'
+    | '/settings/backup'
     | '/settings/security'
     | '/settings/'
     | '/item/$itemId'
@@ -100,6 +110,7 @@ export interface FileRouteTypes {
   to:
     | '/setup'
     | '/unlock'
+    | '/settings/backup'
     | '/settings/security'
     | '/'
     | '/settings'
@@ -110,6 +121,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/setup'
     | '/unlock'
+    | '/settings/backup'
     | '/settings/security'
     | '/_vault/'
     | '/settings/'
@@ -167,6 +179,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/backup': {
+      id: '/settings/backup'
+      path: '/backup'
+      fullPath: '/settings/backup'
+      preLoaderRoute: typeof SettingsBackupRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/security': {
       id: '/settings/security'
       path: '/security'
@@ -197,11 +216,13 @@ const VaultRouteChildren: VaultRouteChildren = {
 const VaultRouteWithChildren = VaultRoute._addFileChildren(VaultRouteChildren)
 
 interface SettingsRouteChildren {
+  SettingsBackupRoute: typeof SettingsBackupRoute
   SettingsSecurityRoute: typeof SettingsSecurityRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
+  SettingsBackupRoute: SettingsBackupRoute,
   SettingsSecurityRoute: SettingsSecurityRoute,
   SettingsIndexRoute: SettingsIndexRoute,
 }

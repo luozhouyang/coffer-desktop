@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::autolock::AutoLock;
+use crate::backup::session::RestoreSessions;
 use crate::clipboard::ClipboardManager;
 use crate::error::AppError;
 use crate::keychain::BiometricKeychain;
@@ -23,6 +24,12 @@ pub struct UnlockedVault {
 
 /// Shared application state.
 pub struct AppState {
+    /// Every field is shared, so blocking tasks can hold a cheap handle to the
+    /// same state instead of borrowing the command's `State<'_, _>`.
+    inner: Arc<AppStateInner>,
+}
+
+pub struct AppStateInner {
     pub paths: VaultPaths,
     vault: Mutex<Option<UnlockedVault>>,
     settings: Mutex<Settings>,
@@ -32,6 +39,23 @@ pub struct AppState {
     epoch: AtomicU64,
     pub clipboard: Arc<ClipboardManager>,
     pub keychain: Arc<dyn BiometricKeychain>,
+    /// Restore previews waiting for commit. Empty while a vault is unlocked.
+    pub restore_sessions: Mutex<RestoreSessions>,
+}
+
+impl Clone for AppState {
+    fn clone(&self) -> Self {
+        Self {
+            inner: Arc::clone(&self.inner),
+        }
+    }
+}
+
+impl std::ops::Deref for AppState {
+    type Target = AppStateInner;
+    fn deref(&self) -> &AppStateInner {
+        &self.inner
+    }
 }
 
 impl AppState {
@@ -45,13 +69,16 @@ impl AppState {
             settings.auto_lock_secs.into(),
         ));
         Self {
-            paths,
-            vault: Mutex::new(None),
-            settings: Mutex::new(settings),
-            autolock: Mutex::new(autolock),
-            epoch: AtomicU64::new(0),
-            clipboard,
-            keychain,
+            inner: Arc::new(AppStateInner {
+                paths,
+                vault: Mutex::new(None),
+                settings: Mutex::new(settings),
+                autolock: Mutex::new(autolock),
+                epoch: AtomicU64::new(0),
+                clipboard,
+                keychain,
+                restore_sessions: Mutex::new(RestoreSessions::new()),
+            }),
         }
     }
 

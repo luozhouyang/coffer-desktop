@@ -20,6 +20,7 @@ pub enum ErrorCode {
     Validation,
     Io,
     KeychainUnavailable,
+    UnsupportedFormat,
     Internal,
 }
 
@@ -45,6 +46,7 @@ impl fmt::Display for ErrorCode {
             ErrorCode::Validation => "validation",
             ErrorCode::Io => "io",
             ErrorCode::KeychainUnavailable => "keychainUnavailable",
+            ErrorCode::UnsupportedFormat => "unsupportedFormat",
             ErrorCode::Internal => "internal",
         })
     }
@@ -91,6 +93,9 @@ impl AppError {
     }
     pub fn already_initialized() -> Self {
         Self::new(ErrorCode::AlreadyInitialized, "vault already exists")
+    }
+    pub fn unsupported_format(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::UnsupportedFormat, message)
     }
 }
 
@@ -141,5 +146,38 @@ mod tests {
             serde_json::to_value(AppError::new(ErrorCode::VaultNotInitialized, "x")).unwrap()["code"],
             "vaultNotInitialized"
         );
+        assert_eq!(
+            serde_json::to_value(AppError::new(ErrorCode::UnsupportedFormat, "x")).unwrap()["code"],
+            "unsupportedFormat"
+        );
+        assert_eq!(
+            serde_json::to_value(ErrorCode::AlreadyInitialized).unwrap(),
+            "alreadyInitialized"
+        );
+    }
+
+    #[test]
+    fn display_matches_serde_names() {
+        let codes = [
+            ErrorCode::Locked,
+            ErrorCode::InvalidPassword,
+            ErrorCode::VaultNotInitialized,
+            ErrorCode::AlreadyInitialized,
+            ErrorCode::NotFound,
+            ErrorCode::Conflict,
+            ErrorCode::Validation,
+            ErrorCode::Io,
+            ErrorCode::KeychainUnavailable,
+            ErrorCode::UnsupportedFormat,
+            ErrorCode::Internal,
+        ];
+        for code in codes {
+            let wire = serde_json::to_value(code)
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .to_string();
+            assert_eq!(code.to_string(), wire);
+        }
     }
 }
