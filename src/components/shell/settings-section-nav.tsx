@@ -1,16 +1,18 @@
-import { useRouterState } from "@tanstack/react-router";
-import { Archive, ShieldCheck } from "lucide-react";
+import { useLocation } from "@tanstack/react-router";
+import { Archive, ArrowUpCircle, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const SECTIONS = [
   { path: "/settings/security", label: "Security", icon: ShieldCheck },
   { path: "/settings/backup", label: "Backup", icon: Archive },
+  { path: "/settings/updates", label: "Updates", icon: ArrowUpCircle },
 ] as const;
 
-/** Breadcrumb-ish header for the settings content area. */
+/** Breadcrumb-ish header for the settings content area, driven by the current section. */
 export function SettingsSectionNav({ className }: { className?: string }) {
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const section = SECTIONS.find((item) => pathname.startsWith(item.path)) ?? SECTIONS[0];
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const section =
+    SECTIONS.find((s) => pathname === s.path || pathname.startsWith(`${s.path}/`)) ?? SECTIONS[0];
   const Icon = section.icon;
   return (
     <nav aria-label="Settings section" className={cn("flex items-center gap-2 text-[13px]", className)}>
