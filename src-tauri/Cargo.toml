@@ -1,6 +1,6 @@
 [package]
 name = "coffer"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local-first encrypted secrets manager for developers"
 authors = ["luozhouyang"]
 edition = "2024"
