@@ -86,7 +86,7 @@ export function UnlockPage() {
           </ul>
         </div>
         <p className="relative flex items-center gap-2 text-[11px] text-faint">
-          <span className="size-1.5 rounded-full bg-[#7FD3A4]" aria-hidden /> Local vault · v0.1
+          <span className="size-1.5 rounded-full bg-[#7FD3A4]" aria-hidden /> Local vault
         </p>
       </aside>
 

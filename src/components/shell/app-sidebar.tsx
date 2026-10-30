@@ -199,7 +199,7 @@ export function AppSidebar() {
           </SidebarMenuItem>
         </SidebarMenu>
         <p className="px-2 pt-1 text-[10px] text-faint group-data-[collapsible=icon]:hidden">
-          <span className="text-[#7FD3A4]">●</span> Local vault · v0.1
+          <span className="text-[#7FD3A4]">●</span> Local vault
         </p>
       </SidebarFooter>
     </Sidebar>
