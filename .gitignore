@@ -26,6 +26,12 @@ dist-ssr
 # Rust build artifacts
 /src-tauri/target/
 
+# Mac App Store signing material
+/src-tauri/embedded.provisionprofile
+*.p12
+*.p8
+*.pkg
+
 # Design docs and local design artifacts (kept out of git)
 /docs/
 

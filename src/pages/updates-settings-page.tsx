@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ArrowUpCircle, RefreshCw, Rocket } from "lucide-react";
 import { toast } from "sonner";
 import { errorMessage } from "@/lib/ipc-errors";
+import { IS_APP_STORE_BUILD } from "@/lib/app-store";
 import { isTauriRuntime } from "@/lib/tauri-ipc";
 import {
   checkForUpdate,
@@ -31,6 +32,11 @@ function formatBytes(bytes: number): string {
 }
 
 export function UpdatesSettingsPage() {
+  if (IS_APP_STORE_BUILD) return <AppStoreUpdatesNotice />;
+  return <UpdatesSettingsContent />;
+}
+
+function UpdatesSettingsContent() {
   const native = isTauriRuntime();
   const [version, setVersion] = useState<string | null>(null);
   const [status, setStatus] = useState<CheckStatus>("idle");
@@ -208,6 +214,22 @@ export function UpdatesSettingsPage() {
           </div>
         </section>
       ) : null}
+    </div>
+  );
+}
+
+function AppStoreUpdatesNotice() {
+  return (
+    <div>
+      <header>
+        <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.12em] text-faint">
+          <ArrowUpCircle className="size-3.5 text-[#E2A75A]" aria-hidden /> Updates
+        </div>
+        <h1 className="mt-2 text-[24px] font-semibold tracking-[-0.015em]">Updates</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">
+          Coffer updates are delivered through the App Store.
+        </p>
+      </header>
     </div>
   );
 }

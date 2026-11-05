@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Mac App Store apps must run in the App Sandbox. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+
+	<!-- Backup export/restore uses the open and save panels. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+
+	<!-- Must match the Mac App Store provisioning profile. -->
+	<key>com.apple.application-identifier</key>
+	<string>FM6874Z669.com.luozhouyang.coffer</string>
+	<key>com.apple.developer.team-identifier</key>
+	<string>FM6874Z669</string>
+
+	<!-- Default keychain access group, also used by the Touch ID key. -->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>FM6874Z669.com.luozhouyang.coffer</string>
+	</array>
+</dict>
+</plist>

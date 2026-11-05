@@ -1,5 +1,6 @@
 import { useLocation } from "@tanstack/react-router";
 import { Archive, ArrowUpCircle, ShieldCheck } from "lucide-react";
+import { IS_APP_STORE_BUILD } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
 
 const SECTIONS = [
@@ -8,11 +9,16 @@ const SECTIONS = [
   { path: "/settings/updates", label: "Updates", icon: ArrowUpCircle },
 ] as const;
 
+/** Keep the breadcrumb in sync with the sidebar's App Store build. */
+const sections = IS_APP_STORE_BUILD
+  ? SECTIONS.filter((section) => section.path !== "/settings/updates")
+  : SECTIONS;
+
 /** Breadcrumb-ish header for the settings content area, driven by the current section. */
 export function SettingsSectionNav({ className }: { className?: string }) {
   const pathname = useLocation({ select: (location) => location.pathname });
   const section =
-    SECTIONS.find((s) => pathname === s.path || pathname.startsWith(`${s.path}/`)) ?? SECTIONS[0];
+    sections.find((s) => pathname === s.path || pathname.startsWith(`${s.path}/`)) ?? SECTIONS[0];
   const Icon = section.icon;
   return (
     <nav aria-label="Settings section" className={cn("flex items-center gap-2 text-[13px]", className)}>

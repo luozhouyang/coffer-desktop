@@ -2,6 +2,7 @@ import { Link, useMatchRoute, useSearch } from "@tanstack/react-router";
 import { Archive, ArrowUpCircle, Lock, ShieldCheck } from "lucide-react";
 import { useVault } from "@/app/vault-context";
 import { Brand } from "@/components/common/brand";
+import { IS_APP_STORE_BUILD } from "@/lib/app-store";
 import { SIDEBAR_STYLE } from "@/components/shell/app-sidebar";
 import {
   Sidebar,
@@ -27,6 +28,11 @@ const SECTIONS: {
   { label: "Backup", icon: Archive, to: "/settings/backup" },
   { label: "Updates", icon: ArrowUpCircle, to: "/settings/updates" },
 ];
+
+/** The App Store delivers updates, so its builds omit the in-app update page. */
+const sections = IS_APP_STORE_BUILD
+  ? SECTIONS.filter((section) => section.to !== "/settings/updates")
+  : SECTIONS;
 
 export function SettingsSidebar() {
   const search = useSearch({ strict: false }) as Record<string, unknown>;
@@ -55,7 +61,7 @@ export function SettingsSidebar() {
           <SidebarGroupLabel className="text-[10px] uppercase tracking-[0.12em] text-faint">Settings</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
-              {SECTIONS.map(({ label, icon: Icon, to }) => (
+              {sections.map(({ label, icon: Icon, to }) => (
                 <SidebarMenuItem key={label}>
                   {to ? (
                     <SidebarMenuButton asChild isActive={matchRoute({ to, fuzzy: false }) !== false} tooltip={label}>

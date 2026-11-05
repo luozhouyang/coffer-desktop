@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { checkForUpdateOnce } from "@/components/shell/update-checker-state";
+import { IS_APP_STORE_BUILD } from "@/lib/app-store";
 import { isTauriRuntime } from "@/lib/tauri-ipc";
 import { checkForUpdate } from "@/lib/updater";
 
@@ -24,7 +25,7 @@ export function UpdateChecker() {
   }, [pathname]);
 
   useEffect(() => {
-    if (!isTauriRuntime()) return;
+    if (IS_APP_STORE_BUILD || !isTauriRuntime()) return;
     let cancelled = false;
     void checkForUpdateOnce(checkForUpdate).then((version) => {
       if (!version || cancelled) return;
