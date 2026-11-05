@@ -38,7 +38,7 @@ Credentials are scattered across notes, shell history, `.env` files, and screens
 - **Fast, fuzzy search.** Press <kbd>⌘</kbd><kbd>K</kbd> from anywhere. Search titles, usernames, URLs, notes, and tags, in Chinese or English (FTS5 trigram index with a short-query fallback).
 - **Projects, tags, and smart grouping.** Organize by repository or service; categories are suggested by local rules and can be overridden.
 - **`.env` import.** Drop in an environment file, review a masked preview, and import the keys you choose into a project. Values are parsed and stored entirely on your device.
-- **Locked by default.** Auto-lock after inactivity, lock with the OS session, and clear the clipboard after copying (only if it still holds the copied secret).
+- **Locked by default.** Auto-lock after inactivity, lock when your macOS or Windows session locks, and clear the clipboard after copying (only if it still holds the copied secret). Clipboard history opt-out markers are set on macOS and Windows.
 - **Encrypted backups.** Export the whole vault as one password-protected `.coffer` file; restore it on a new machine from the setup screen.
 - **Touch ID on macOS.** Optional biometric unlock on supported Macs.
 - **Signed auto-updates.** Releases are signed with an offline minisign key and verified by the app before installing.

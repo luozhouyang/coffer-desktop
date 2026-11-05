@@ -21,13 +21,7 @@ pub struct ArboardClipboard;
 
 impl Clipboard for ArboardClipboard {
     fn set_text(&self, value: &str) -> Result<(), String> {
-        let mut cb = arboard::Clipboard::new().map_err(|e| e.to_string())?;
-        // TODO(clipboard-markers): on macOS write `org.nspasteboard.ConcealedType`
-        // and on Windows set `ExcludeClipboardContentFromMonitorProcessing` /
-        // `CanIncludeInClipboardHistory=0` so clipboard managers and cloud
-        // history do not persist the secret. `arboard` has no API for extra
-        // pasteboard types yet, so the short auto-clear is the only protection.
-        cb.set_text(value.to_owned()).map_err(|e| e.to_string())
+        set_text_platform(value)
     }
 
     fn get_text(&self) -> Result<Option<String>, String> {
@@ -45,6 +39,95 @@ impl Clipboard for ArboardClipboard {
     fn clear(&self) -> Result<(), String> {
         let mut cb = arboard::Clipboard::new().map_err(|e| e.to_string())?;
         cb.clear().map_err(|e| e.to_string())
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn set_text_platform(value: &str) -> Result<(), String> {
+    use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString};
+    use objc2_foundation::NSString;
+
+    // `arboard` cannot write extra pasteboard types, so write through AppKit
+    // and mark the item as concealed. Clipboard managers that understand the
+    // nspasteboard convention skip it instead of persisting the secret.
+    let pasteboard = NSPasteboard::generalPasteboard();
+    pasteboard.clearContents();
+    let string = NSString::from_str(value);
+    // SAFETY: AppKit owns the static pasteboard type string.
+    if !pasteboard.setString_forType(&string, unsafe { NSPasteboardTypeString }) {
+        return Err("clipboard is unavailable".to_string());
+    }
+    let concealed = NSString::from_str("org.nspasteboard.ConcealedType");
+    let marker = NSString::from_str("");
+    pasteboard.setString_forType(&marker, &concealed);
+    Ok(())
+}
+
+#[cfg(windows)]
+fn set_text_platform(value: &str) -> Result<(), String> {
+    let result = arboard_set_text(value);
+    if result.is_ok() {
+        conceal_windows();
+    }
+    result
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+fn set_text_platform(value: &str) -> Result<(), String> {
+    arboard_set_text(value)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn arboard_set_text(value: &str) -> Result<(), String> {
+    let mut cb = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+    cb.set_text(value.to_owned()).map_err(|e| e.to_string())
+}
+
+/// Adds the Win32 opt-out formats to the current clipboard contents. Failure
+/// is not fatal: the text is already copied and the timer still clears it.
+#[cfg(windows)]
+fn conceal_windows() {
+    use windows_sys::Win32::Foundation::GlobalFree;
+    use windows_sys::Win32::System::DataExchange::{
+        CloseClipboard, OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
+    };
+    use windows_sys::Win32::System::Memory::{
+        GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock,
+    };
+
+    const FORMATS: [&str; 2] = [
+        "ExcludeClipboardContentFromMonitorProcessing",
+        "CanIncludeInClipboardHistory",
+    ];
+
+    // SAFETY: standard Win32 clipboard sequence; every handle is released on
+    // every path and the system takes ownership only after success.
+    unsafe {
+        if OpenClipboard(std::ptr::null_mut()) == 0 {
+            return;
+        }
+        for name in FORMATS {
+            let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+            let format = RegisterClipboardFormatW(wide.as_ptr());
+            if format == 0 {
+                continue;
+            }
+            let handle = GlobalAlloc(GMEM_MOVEABLE, std::mem::size_of::<u32>());
+            if handle.is_null() {
+                continue;
+            }
+            let data = GlobalLock(handle) as *mut u32;
+            if data.is_null() {
+                GlobalFree(handle);
+                continue;
+            }
+            *data = 0;
+            GlobalUnlock(handle);
+            if SetClipboardData(format, handle).is_null() {
+                GlobalFree(handle);
+            }
+        }
+        let _ = CloseClipboard();
     }
 }
 

@@ -16,6 +16,7 @@ pub mod import;
 pub mod keychain;
 pub mod models;
 pub mod search;
+pub mod session_lock;
 pub mod settings;
 pub mod state;
 pub mod vault;
@@ -135,6 +136,13 @@ fn spawn_background_tasks<R: Runtime>(app: AppHandle<R>) {
                 sessions.expire();
             }
             if !state.is_unlocked() {
+                continue;
+            }
+            // Lock immediately when the OS session locks; the idle timer is a
+            // separate backstop. Linux has no portable lock-state API, so this
+            // is a no-op there (see `session_lock`).
+            if session_lock::is_locked() {
+                lock_vault(&handle);
                 continue;
             }
             let tick = state
