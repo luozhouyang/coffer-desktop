@@ -36,7 +36,7 @@ export function VaultList({ search }: { search: Record<string, unknown> }) {
   const params = useParams({ strict: false }) as { itemId?: string };
   const { openCreate, openImport } = uiStore;
 
-  const { data: projects } = useProjects();
+  const { data: projects } = useProjects(true);
   const [sort, setSort] = useState<SortKey>("updated");
 
   const itemFilter: ItemFilter = useMemo(

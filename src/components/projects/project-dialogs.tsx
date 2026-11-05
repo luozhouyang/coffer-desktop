@@ -37,7 +37,7 @@ const COLORS = ["#E2A75A", "#8FB4FF", "#7FD3A4", "#C3A6FF", "#E88BA0", "#74CFD6"
 /** Hosted in `__root`; opened via `uiStore.openProjectDialog`. */
 export function ProjectDialogs() {
   const request = useUiStore((s) => s.projectDialog);
-  const { data: projects } = useProjects();
+  const { data: projects } = useProjects(true);
   const project = request?.projectId ? projects?.find((p) => p.id === request.projectId) : undefined;
 
   if (!request) return null;

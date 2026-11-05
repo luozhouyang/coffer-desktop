@@ -1,6 +1,6 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createMockIpc } from "@/lib/mock-ipc";
 import { renderApp, waitForPath } from "@/test/render-app";
 
@@ -112,5 +112,25 @@ describe("vault sidebar", () => {
     await user.click(within(dialog).getByRole("button", { name: "Create project" }));
 
     expect(await within(sidebar).findByText("Payments team")).toBeInTheDocument();
+  });
+
+  it("archives a project into its own section and restores it", async () => {
+    const { sidebar, ipc } = await openVault();
+    const user = userEvent.setup();
+    const update = vi.spyOn(ipc, "projectUpdate");
+
+    await user.click(within(sidebar).getByRole("button", { name: "Manage project Lab experiments" }));
+    await user.click(await screen.findByRole("menuitem", { name: /Archive/ }));
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+
+    await waitFor(() => expect(within(sidebar).getByText("Archived")).toBeInTheDocument());
+    // The row moved into the archived section instead of disappearing.
+    expect(within(sidebar).getByRole("link", { name: /Lab experiments/ })).toBeInTheDocument();
+
+    await user.click(within(sidebar).getByRole("button", { name: "Manage project Lab experiments" }));
+    await user.click(await screen.findByRole("menuitem", { name: /Unarchive/ }));
+
+    await waitFor(() => expect(within(sidebar).queryByText("Archived")).not.toBeInTheDocument());
+    expect(within(sidebar).getByRole("link", { name: /Lab experiments/ })).toBeInTheDocument();
   });
 });

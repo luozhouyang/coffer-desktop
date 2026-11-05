@@ -1,5 +1,7 @@
 import { Link, useSearch } from "@tanstack/react-router";
 import {
+  Archive,
+  ArchiveRestore,
   ChevronRight,
   Inbox,
   Lock,
@@ -11,12 +13,14 @@ import {
   Trash2,
   KeyRound,
 } from "lucide-react";
-import { useSidebarCounts, useProjects, useSettings } from "@/app/queries";
+import { toast } from "sonner";
+import { useSidebarCounts, useProjects, useSettings, useUpdateProject } from "@/app/queries";
 import { useVault } from "@/app/vault-context";
 import { uiStore } from "@/app/ui-store";
 import type { Project } from "@/lib/ipc-types";
 import { projectColor } from "@/lib/categories";
 import { formatDuration } from "@/lib/format";
+import { errorMessage } from "@/lib/ipc-errors";
 import { cn } from "@/lib/utils";
 import { parseVaultSearch, toVaultLinkSearch } from "@/lib/vault-filter";
 import { isMacPlatform } from "@/lib/platform";
@@ -61,7 +65,9 @@ export function AppSidebar() {
   const search = useSearch({ strict: false }) as Record<string, unknown>;
   const filter = parseVaultSearch(search);
   const { data: counts, isPending: countsPending } = useSidebarCounts();
-  const { data: projects, isPending: projectsPending } = useProjects();
+  const { data: projects, isPending: projectsPending } = useProjects(true);
+  const activeProjects = projects?.filter((project) => !project.archivedAt);
+  const archivedProjects = projects?.filter((project) => project.archivedAt);
   const { openPalette, openProjectDialog } = uiStore;
   const { setOpenMobile, isMobile } = useSidebar();
   const { warning, lock } = useVault();
@@ -151,14 +157,14 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
               {projectsPending ? <ProjectRowSkeletons /> : null}
-              {!projectsPending && projects?.length === 0 ? (
+              {!projectsPending && activeProjects?.length === 0 ? (
                 <SidebarMenuItem>
                   <p className="px-2 py-2 text-[11px] leading-relaxed text-faint group-data-[collapsible=icon]:hidden">
                     Projects group related secrets. Create one to get started.
                   </p>
                 </SidebarMenuItem>
               ) : null}
-              {projects?.map((project) => (
+              {activeProjects?.map((project) => (
                 <ProjectRow
                   key={project.id}
                   project={project}
@@ -170,6 +176,28 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {archivedProjects?.length ? (
+          <SidebarGroup className="py-1">
+            <SidebarGroupLabel className="h-7 text-[10px] font-semibold uppercase tracking-[0.12em] text-faint">
+              Archived
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-0.5">
+                {archivedProjects.map((project) => (
+                  <ProjectRow
+                    key={project.id}
+                    project={project}
+                    count={project.itemCount}
+                    active={filter.project === project.id}
+                    archived
+                    onNavigate={closeMobile}
+                  />
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ) : null}
       </SidebarContent>
 
       <SidebarFooter className="gap-1 p-2">
@@ -246,14 +274,39 @@ function ProjectRow({
   project,
   count,
   active,
+  archived = false,
   onNavigate,
 }: {
   project: Project;
   count: number;
   active: boolean;
+  archived?: boolean;
   onNavigate: () => void;
 }) {
   const { openProjectDialog } = uiStore;
+  const update = useUpdateProject();
+
+  const toggleArchive = () => {
+    const next = !archived;
+    update.mutate(
+      { id: project.id, archived: next },
+      {
+        onSuccess: () => {
+          toast.success(next ? `Project “${project.name}” archived` : `Project “${project.name}” restored`, {
+            action: {
+              label: "Undo",
+              onClick: () => update.mutate({ id: project.id, archived: !next }),
+            },
+          });
+        },
+        onError: (err) =>
+          toast.error(next ? "Could not archive project" : "Could not restore project", {
+            description: errorMessage(err),
+          }),
+      },
+    );
+  };
+
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={active} tooltip={project.name} onClick={onNavigate}>
@@ -283,6 +336,10 @@ function ProjectRow({
         <DropdownMenuContent align="end" side="right" className="w-44">
           <DropdownMenuItem onSelect={() => openProjectDialog({ mode: "rename", projectId: project.id })}>
             <Pencil className="size-4" aria-hidden /> Rename
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={toggleArchive}>
+            {archived ? <ArchiveRestore className="size-4" aria-hidden /> : <Archive className="size-4" aria-hidden />}
+            {archived ? "Unarchive" : "Archive"}
           </DropdownMenuItem>
           <DropdownMenuItem
             variant="destructive"
