@@ -11,6 +11,7 @@ use crate::autolock::AutoLock;
 use crate::backup::session::RestoreSessions;
 use crate::clipboard::ClipboardManager;
 use crate::error::AppError;
+use crate::import::ImportSessions;
 use crate::keychain::BiometricKeychain;
 use crate::models::Settings;
 use crate::vault::VaultDb;
@@ -41,6 +42,8 @@ pub struct AppStateInner {
     pub keychain: Arc<dyn BiometricKeychain>,
     /// Restore previews waiting for commit. Empty while a vault is unlocked.
     pub restore_sessions: Mutex<RestoreSessions>,
+    /// Pending `.env` imports. Cleared on lock.
+    pub import_sessions: Mutex<ImportSessions>,
 }
 
 impl Clone for AppState {
@@ -78,6 +81,7 @@ impl AppState {
                 clipboard,
                 keychain,
                 restore_sessions: Mutex::new(RestoreSessions::new()),
+                import_sessions: Mutex::new(ImportSessions::new()),
             }),
         }
     }
@@ -121,6 +125,10 @@ impl AppState {
     /// vault was open. Never blocks on in-flight readers: if another thread
     /// still holds the `Arc`, its last drop closes the connection.
     pub fn lock(&self) -> bool {
+        // Pending imports hold plaintext; they never outlive an unlock.
+        if let Ok(mut sessions) = self.import_sessions.lock() {
+            sessions.clear();
+        }
         let previous = self.vault.lock().ok().and_then(|mut g| g.take());
         let Some(prev) = previous else {
             return false;

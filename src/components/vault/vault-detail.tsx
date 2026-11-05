@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useAudit, useDeleteItem, useItem, useProjects, useSettings } from "@/app/queries";
 import { uiStore } from "@/app/ui-store";
-import { useCopySecret, useRevealSecret } from "@/hooks/use-reveal-secret";
+import { useCopyEnvValue, useCopySecret, useRevealSecret } from "@/hooks/use-reveal-secret";
 import { errorCode, errorMessage } from "@/lib/ipc-errors";
 import type { ItemDetail } from "@/lib/ipc-types";
 import { absoluteDate, longRelativeTime, hostFromUrl } from "@/lib/format";
@@ -257,6 +257,7 @@ function SourceLabel({ item }: { item: ItemDetail }) {
 function SecretCard({ item, clearSecs }: { item: ItemDetail; clearSecs: number }) {
   const reveal = useRevealSecret(item.id);
   const copier = useCopySecret();
+  const envCopier = useCopyEnvValue();
   const isEnv = item.kind === "env";
   const rows = !isEnv || reveal.value === null ? null : parseEnvRows(reveal.value);
 
@@ -304,6 +305,17 @@ function SecretCard({ item, clearSecs }: { item: ItemDetail; clearSecs: number }
                   <span className="shrink-0 text-[#A7AFBD]">{row.key}</span>
                   <span className="text-faint">=</span>
                   <span className="truncate text-[#E9ECF2]">{row.value}</span>
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    className="ml-auto size-6 shrink-0 text-muted-foreground"
+                    aria-label={`Copy ${row.key}`}
+                    title={`Copy ${row.key}`}
+                    disabled={envCopier.pendingKey === row.key}
+                    onClick={() => void envCopier.copy(item.id, row.key, i)}
+                  >
+                    <Copy className="size-3" aria-hidden />
+                  </Button>
                 </div>
               ))}
             </div>
@@ -349,18 +361,29 @@ function parseEnvRows(raw: string): { key: string; value: string }[] {
     const parsed = JSON.parse(raw) as unknown;
     if (Array.isArray(parsed)) {
       return parsed
-        .filter((r): r is { key: string; value: string } => typeof r?.key === "string")
-        .map((r) => ({ key: r.key, value: String(r.value ?? "") }));
+        .filter((r): r is { key: string; value?: unknown } => typeof r?.key === "string")
+        .map((r) => ({
+          key: r.key,
+          value:
+            typeof r.value === "string"
+              ? r.value
+              : typeof r.value === "number" || typeof r.value === "boolean"
+                ? String(r.value)
+                : "",
+        }));
     }
   } catch {
     // fall through: raw text
   }
-  return raw.split(/\r?\n/).map((line) => {
+  const lines = raw.split(/\r?\n/);
+  // `str::lines` on the backend drops a trailing newline; keep row indexes in
+  // sync so per-row copy selects the value the user sees.
+  if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  return lines.map((line) => {
     const idx = line.indexOf("=");
     return idx === -1 ? { key: line, value: "" } : { key: line.slice(0, idx), value: line.slice(idx + 1) };
   });
 }
-
 function MetaRow({
   label,
   value,
@@ -407,7 +430,7 @@ function kindLabel(kind: ItemDetail["kind"]) {
 
 function auditLabel(action: string) {
   return (
-    { create: "Created", update: "Updated", delete: "Deleted", reveal: "Revealed", copy: "Copied", projectChange: "Moved project" }[
+    { create: "Created", update: "Updated", delete: "Deleted", reveal: "Revealed", copy: "Copied", projectChange: "Moved project", import: "Imported" }[
       action
     ] ?? action
   );

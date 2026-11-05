@@ -369,6 +369,61 @@ pub struct AuditEntry {
     pub created_at: i64,
 }
 
+/// An item that already uses an imported variable's name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportConflict {
+    pub item_id: String,
+    pub project_id: Option<String>,
+}
+
+/// Masked preview of one `.env` variable. Values never leave the backend.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportEntryPreview {
+    #[specta(type = Number)]
+    pub index: u32,
+    pub key: String,
+    pub masked_value: String,
+    pub category: Option<String>,
+    pub tags: Vec<String>,
+    /// The same key appeared more than once; the last value wins.
+    pub duplicate: bool,
+    pub conflicts: Vec<ImportConflict>,
+}
+
+/// Result of parsing an uploaded `.env` file. `session_id` names the
+/// short-lived backend session that holds the plaintext values.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportPreview {
+    pub session_id: String,
+    pub entries: Vec<ImportEntryPreview>,
+    #[specta(type = Number)]
+    pub skipped_lines: u32,
+    pub suggested_project_id: Option<String>,
+}
+
+/// Commit request. `selected` holds entry indexes from the preview.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportCommitInput {
+    pub session_id: String,
+    pub project_id: Option<String>,
+    pub selected: Vec<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportResult {
+    #[specta(type = Number)]
+    pub created: u32,
+    #[specta(type = Number)]
+    pub updated: u32,
+    #[specta(type = Number)]
+    pub skipped: u32,
+}
+
 /// Length limits from contract §6. Counted in bytes for UTF-8 payloads.
 pub mod limits {
     pub const TITLE: usize = 200;

@@ -176,9 +176,50 @@ export interface CopyResult {
 
 export interface AuditEntry {
   id: number;
-  action: "create" | "update" | "delete" | "reveal" | "copy" | "projectChange" | string;
+  action: "create" | "update" | "delete" | "reveal" | "copy" | "projectChange" | "import" | string;
   itemId: string | null;
   createdAt: number;
+}
+
+/* ------------------------------------------------------------- import */
+
+/** An existing item that already uses an imported variable's name. */
+export interface ImportConflict {
+  itemId: string;
+  projectId: string | null;
+}
+
+/** Masked preview of one `.env` variable. Plaintext stays in Rust. */
+export interface ImportEntryPreview {
+  index: number;
+  key: string;
+  /** Fixed bullets; the backend never reveals length or a prefix. */
+  maskedValue: string;
+  category: string | null;
+  tags: string[];
+  /** The same key appears more than once; the last value wins. */
+  duplicate: boolean;
+  conflicts: ImportConflict[];
+}
+
+export interface ImportPreview {
+  sessionId: string;
+  entries: ImportEntryPreview[];
+  skippedLines: number;
+  suggestedProjectId: string | null;
+}
+
+export interface ImportCommitInput {
+  sessionId: string;
+  projectId: string | null;
+  /** Entry indexes from the preview. */
+  selected: number[];
+}
+
+export interface ImportResult {
+  created: number;
+  updated: number;
+  skipped: number;
 }
 
 export interface AppError {

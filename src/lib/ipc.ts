@@ -4,6 +4,9 @@ import type {
   BackupPreview,
   Classification,
   CopyResult,
+  ImportCommitInput,
+  ImportPreview,
+  ImportResult,
   ItemDetail,
   ItemFilter,
   ItemInput,
@@ -92,6 +95,18 @@ export interface IpcClient {
   itemRevealSecret(id: string): Promise<RevealedSecret>;
   /** Copy happens inside Rust; the value never crosses IPC. */
   copySecret(id: string): Promise<CopyResult>;
+  /** Copies one row of an `env` item by position; the value never crosses IPC. */
+  copyEnvValue(id: string, key: string, index: number): Promise<CopyResult>;
+
+  /**
+   * Parses uploaded `.env` text and returns a masked preview. The plaintext is
+   * held in a backend session for ten minutes and never returned.
+   */
+  importEnv(text: string, fileName?: string | null): Promise<ImportPreview>;
+  /** Writes the selected preview entries and consumes the session. */
+  importCommit(input: ImportCommitInput): Promise<ImportResult>;
+  /** Drops a preview session (dialog closed without importing). */
+  importCancel(sessionId: string): Promise<void>;
 
   search(query: string, filter: { projectId?: string | null; unassignedOnly: boolean; deep: boolean }): Promise<SearchHit[]>;
   classifyPreview(input: { title: string; value: string; url?: string | null }): Promise<Classification>;

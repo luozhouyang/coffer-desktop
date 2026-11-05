@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createMockIpc } from "@/lib/mock-ipc";
 import { renderApp, waitForPath } from "@/test/render-app";
 
@@ -150,5 +150,46 @@ describe("vault list and detail", () => {
     const row = Array.from(rows()).find((r) => r.textContent?.includes("OpenAI production")) as HTMLElement;
     expect(within(row).getByTestId("category-badge")).toHaveTextContent("AI / LLM");
     expect(row.querySelector(".font-mono")).toBeTruthy();
+  });
+
+  it("copies a single .env row without crossing IPC with the value", async () => {
+    const { ipc } = await openVault("/?kind=env");
+    const user = userEvent.setup();
+    const list = screen.getByTestId("vault-list");
+    await within(list).findByText("Dashboard .env");
+    await user.click(within(list).getByText("Dashboard .env"));
+
+    await user.click(await screen.findByRole("button", { name: "Reveal secret" }));
+    const copy = await screen.findByRole("button", { name: "Copy DATABASE_URL" });
+    const spy = vi.spyOn(ipc, "copyEnvValue");
+    await user.click(copy);
+
+    expect(spy).toHaveBeenCalledWith(expect.any(String), "DATABASE_URL", 0);
+    expect(ipc.__state.copied).toContain(spy.mock.calls[0][0]);
+  });
+
+  it("copies the duplicate env row the user clicked, not the first match", async () => {
+    const ipc = createMockIpc();
+    await ipc.itemCreate({
+      kind: "env",
+      title: "Duplicate .env",
+      secret: "TOKEN=old\nTOKEN=new\n",
+      projectId: null,
+      tags: [],
+    });
+    const rendered = renderApp({ ipc, initialHref: "/?kind=env" });
+    await waitForPath(rendered.router, "/");
+    const user = userEvent.setup();
+    const list = await screen.findByTestId("vault-list");
+    await within(list).findByText("Duplicate .env");
+    await user.click(within(list).getByText("Duplicate .env"));
+
+    await user.click(await screen.findByRole("button", { name: "Reveal secret" }));
+    const copies = await screen.findAllByRole("button", { name: "Copy TOKEN" });
+    expect(copies).toHaveLength(2);
+    const spy = vi.spyOn(ipc, "copyEnvValue");
+    await user.click(copies[1]);
+
+    expect(spy).toHaveBeenCalledWith(expect.any(String), "TOKEN", 1);
   });
 });

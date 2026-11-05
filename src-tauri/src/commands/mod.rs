@@ -4,6 +4,7 @@
 
 pub mod audit;
 pub mod backup;
+pub mod import;
 pub mod items;
 pub mod keychain;
 pub mod projects;
@@ -16,9 +17,11 @@ pub use backup::{
     backup_export, backup_export_keychain, backup_restore_begin, backup_restore_cancel,
     backup_restore_commit,
 };
+pub use import::{import_cancel, import_commit, import_env};
 pub use items::{
-    classify_preview, copy_secret, item_create, item_delete, item_get, item_reveal_secret,
-    item_set_category, item_set_project, item_toggle_favorite, item_update, items_list,
+    classify_preview, copy_env_value, copy_secret, item_create, item_delete, item_get,
+    item_reveal_secret, item_set_category, item_set_project, item_toggle_favorite, item_update,
+    items_list,
 };
 pub use keychain::{
     vault_keychain_disable, vault_keychain_enable, vault_keychain_status, vault_unlock_keychain,

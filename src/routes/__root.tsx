@@ -13,6 +13,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { CommandPalette } from "@/components/command/command-palette";
 import { ItemEditorSheet } from "@/components/editor/item-editor-sheet";
+import { ImportDialog } from "@/components/import/import-dialog";
 import { ProjectDialogs } from "@/components/projects/project-dialogs";
 import { Kbd } from "@/components/common/kbd";
 import { LockWarningBanner } from "@/components/shell/lock-warning-banner";
@@ -33,6 +34,7 @@ function RootComponent() {
         <CommandPalette />
         <ItemEditorSheet />
         <ProjectDialogs />
+        <ImportDialog />
         <LockWarningBanner />
         <UpdateChecker />
       </TooltipProvider>

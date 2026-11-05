@@ -66,12 +66,26 @@ export const commands = {
 	itemRevealSecret: (id: string) => typedError<RevealedSecret, AppError>(__TAURI_INVOKE("item_reveal_secret", { id })),
 	/**  `copy_secret`: copies inside Rust and returns only the clear delay. */
 	copySecret: (id: string) => typedError<CopyResult, AppError>(__TAURI_INVOKE("copy_secret", { id })),
+	/**
+	 *  `copy_env_value`: copies one variable from an `env` item. The value stays
+	 *  inside Rust, like `copy_secret`.
+	 */
+	copyEnvValue: (id: string, key: string, index: number) => typedError<CopyResult, AppError>(__TAURI_INVOKE("copy_env_value", { id, key, index })),
 	/**  `search`. `deep` only takes effect when the `deepSearch` setting is enabled. */
 	search: (query: string, projectId: string | null, unassignedOnly: boolean, deep: boolean) => typedError<SearchHit_Serialize[], AppError>(__TAURI_INVOKE("search", { query, projectId, unassignedOnly, deep })),
 	/**  `classify_preview`: pure local classification, never persisted. */
 	classifyPreview: (title: string, value: string, url: string | null) => typedError<Classification_Serialize, AppError>(__TAURI_INVOKE("classify_preview", { title, value, url })),
 	/**  `audit_list` */
 	auditList: (itemId: string) => typedError<AuditEntry_Serialize[], AppError>(__TAURI_INVOKE("audit_list", { itemId })),
+	/**
+	 *  `import_env`: parses uploaded text and returns a masked preview. The
+	 *  plaintext values stay in a backend session (ten minute TTL).
+	 */
+	importEnv: (text: string, fileName: string | null) => typedError<ImportPreview_Serialize, AppError>(__TAURI_INVOKE("import_env", { text, fileName })),
+	/**  `import_commit`: writes the selected entries and consumes the session. */
+	importCommit: (input: ImportCommitInput_Deserialize) => typedError<ImportResult, AppError>(__TAURI_INVOKE("import_commit", { input })),
+	/**  `import_cancel`: drops a preview and its plaintext values. */
+	importCancel: (sessionId: string) => typedError<null, AppError>(__TAURI_INVOKE("import_cancel", { sessionId })),
 	/**  `backup_export`: writes an encrypted `.coffer` of the whole vault. */
 	backupExport: (destination: string, password: string) => typedError<BackupExportResult, AppError>(__TAURI_INVOKE("backup_export", { destination, password })),
 	/**
@@ -186,6 +200,99 @@ export type CopyResult = {
  *  produces `invalidPassword`, `vaultNotInitialized`, `alreadyInitialized`.
  */
 export type ErrorCode = "locked" | "invalidPassword" | "vaultNotInitialized" | "alreadyInitialized" | "notFound" | "conflict" | "validation" | "io" | "keychainUnavailable" | "unsupportedFormat" | "internal";
+
+/**  Commit request. `selected` holds entry indexes from the preview. */
+export type ImportCommitInput = ImportCommitInput_Serialize | ImportCommitInput_Deserialize;
+
+/**  Commit request. `selected` holds entry indexes from the preview. */
+export type ImportCommitInput_Deserialize = {
+	sessionId: string,
+	projectId?: string | null,
+	selected: number[],
+};
+
+/**  Commit request. `selected` holds entry indexes from the preview. */
+export type ImportCommitInput_Serialize = {
+	sessionId: string,
+	projectId: string | null,
+	selected: number[],
+};
+
+/**  An item that already uses an imported variable's name. */
+export type ImportConflict = ImportConflict_Serialize | ImportConflict_Deserialize;
+
+/**  An item that already uses an imported variable's name. */
+export type ImportConflict_Deserialize = {
+	itemId: string,
+	projectId?: string | null,
+};
+
+/**  An item that already uses an imported variable's name. */
+export type ImportConflict_Serialize = {
+	itemId: string,
+	projectId: string | null,
+};
+
+/**  Masked preview of one `.env` variable. Values never leave the backend. */
+export type ImportEntryPreview = ImportEntryPreview_Serialize | ImportEntryPreview_Deserialize;
+
+/**  Masked preview of one `.env` variable. Values never leave the backend. */
+export type ImportEntryPreview_Deserialize = {
+	index: number,
+	key: string,
+	maskedValue: string,
+	category?: string | null,
+	tags: string[],
+	/**  The same key appeared more than once; the last value wins. */
+	duplicate: boolean,
+	conflicts: ImportConflict_Deserialize[],
+};
+
+/**  Masked preview of one `.env` variable. Values never leave the backend. */
+export type ImportEntryPreview_Serialize = {
+	index: number,
+	key: string,
+	maskedValue: string,
+	category: string | null,
+	tags: string[],
+	/**  The same key appeared more than once; the last value wins. */
+	duplicate: boolean,
+	conflicts: ImportConflict_Serialize[],
+};
+
+/**
+ *  Result of parsing an uploaded `.env` file. `session_id` names the
+ *  short-lived backend session that holds the plaintext values.
+ */
+export type ImportPreview = ImportPreview_Serialize | ImportPreview_Deserialize;
+
+/**
+ *  Result of parsing an uploaded `.env` file. `session_id` names the
+ *  short-lived backend session that holds the plaintext values.
+ */
+export type ImportPreview_Deserialize = {
+	sessionId: string,
+	entries: ImportEntryPreview_Deserialize[],
+	skippedLines: number,
+	suggestedProjectId?: string | null,
+};
+
+/**
+ *  Result of parsing an uploaded `.env` file. `session_id` names the
+ *  short-lived backend session that holds the plaintext values.
+ */
+export type ImportPreview_Serialize = {
+	sessionId: string,
+	entries: ImportEntryPreview_Serialize[],
+	skippedLines: number,
+	suggestedProjectId: string | null,
+};
+
+export type ImportResult = {
+	created: number,
+	updated: number,
+	skipped: number,
+};
 
 export type ItemDetail = ItemDetail_Serialize | ItemDetail_Deserialize;
 

@@ -111,12 +111,39 @@ pub fn item_reveal_secret(
 pub fn copy_secret(state: State<'_, AppState>, id: String) -> Result<CopyResult, AppError> {
     let db = state.require_db()?;
     let value = db.with(|conn| ops::read_secret(conn, &id))?;
+    copy_and_audit(&state, &db, &id, &value)
+}
+
+/// `copy_env_value`: copies one variable from an `env` item. The value stays
+/// inside Rust, like `copy_secret`.
+#[tauri::command]
+#[specta::specta]
+pub fn copy_env_value(
+    state: State<'_, AppState>,
+    id: String,
+    key: String,
+    index: u32,
+) -> Result<CopyResult, AppError> {
+    if key.trim().is_empty() || key.len() > limits::TITLE {
+        return Err(AppError::validation("invalid variable name"));
+    }
+    let db = state.require_db()?;
+    let value = db.with(|conn| ops::read_env_value(conn, &id, &key, index))?;
+    copy_and_audit(&state, &db, &id, &value)
+}
+
+fn copy_and_audit(
+    state: &AppState,
+    db: &crate::vault::VaultDb,
+    id: &str,
+    value: &Zeroizing<String>,
+) -> Result<CopyResult, AppError> {
     let clear_secs = state.settings().clipboard_clear_secs;
     state
         .clipboard
-        .copy(&value, std::time::Duration::from_secs(clear_secs.into()))
+        .copy(value, std::time::Duration::from_secs(clear_secs.into()))
         .map_err(|_| AppError::internal("clipboard is unavailable"))?;
-    ops::record_copy(&db, &id)?;
+    ops::record_copy(db, id)?;
     Ok(CopyResult {
         clear_after_secs: clear_secs,
     })

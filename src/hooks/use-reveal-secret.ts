@@ -76,29 +76,66 @@ export function useRevealSecret(itemId: string | undefined) {
   return { value, revealed: value !== null, pending, error, secondsLeft, reveal, hide: clear };
 }
 
-/** Rust-side copy: the secret never crosses IPC; we only learn the clear delay. */
-export function useCopySecret() {
-  const ipc = useIpc();
-  const [pendingId, setPendingId] = useState<string | null>(null);
+/** Shared single-flight clipboard action for the two copy commands. */
+function useClipboardAction() {
+  const [pending, setPending] = useState<string | null>(null);
   const inFlight = useRef(false);
-  const copy = async (itemId: string, title?: string) => {
-    if (inFlight.current) return;
+  const run = async (
+    token: string,
+    action: () => Promise<{ clearAfterSecs: number }>,
+    onSuccess: (clearAfterSecs: number) => void,
+    onError: (err: unknown) => void,
+  ): Promise<number | null> => {
+    if (inFlight.current) return null;
     inFlight.current = true;
-    setPendingId(itemId);
+    setPending(token);
     try {
-      const { clearAfterSecs } = await ipc.copySecret(itemId);
-      toast.success(`Copied${title ? ` “${title}”` : ""}`, {
-        description: `Clipboard clears in ${clearAfterSecs}s.`,
-        id: "copy-secret",
-      });
+      const { clearAfterSecs } = await action();
+      onSuccess(clearAfterSecs);
       return clearAfterSecs;
     } catch (err) {
-      toast.error("Could not copy secret", { description: errorMessage(err) });
+      onError(err);
       return null;
     } finally {
       inFlight.current = false;
-      setPendingId((current) => (current === itemId ? null : current));
+      setPending((current) => (current === token ? null : current));
     }
   };
-  return { copy, pendingId };
+  return { pending, run };
+}
+
+/** Rust-side copy: the secret never crosses IPC; we only learn the clear delay. */
+export function useCopySecret() {
+  const ipc = useIpc();
+  const { pending, run } = useClipboardAction();
+  const copy = (itemId: string, title?: string) =>
+    run(
+      itemId,
+      () => ipc.copySecret(itemId),
+      (clearAfterSecs) =>
+        toast.success(`Copied${title ? ` “${title}”` : ""}`, {
+          description: `Clipboard clears in ${clearAfterSecs}s.`,
+          id: "copy-secret",
+        }),
+      (err) => toast.error("Could not copy secret", { description: errorMessage(err) }),
+    );
+  return { copy, pendingId: pending };
+}
+
+/** Copies one row of an `.env` item by position; the value never crosses IPC. */
+export function useCopyEnvValue() {
+  const ipc = useIpc();
+  const { pending, run } = useClipboardAction();
+  const copy = (itemId: string, key: string, index: number) =>
+    run(
+      key,
+      () => ipc.copyEnvValue(itemId, key, index),
+      (clearAfterSecs) =>
+        toast.success(`Copied ${key}`, {
+          description: `Clipboard clears in ${clearAfterSecs}s.`,
+          id: "copy-secret",
+        }),
+      (err) => toast.error("Could not copy variable", { description: errorMessage(err) }),
+    );
+  return { copy, pendingKey: pending };
 }

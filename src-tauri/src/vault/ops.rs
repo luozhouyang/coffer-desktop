@@ -380,6 +380,68 @@ pub fn read_secret(conn: &Connection, id: &str) -> Result<zeroize::Zeroizing<Str
     Ok(zeroize::Zeroizing::new(value))
 }
 
+/// Reads one row's value from an `env` item by position. The index (not just
+/// the key) selects the row, so duplicate keys copy the value the user sees.
+pub fn read_env_value(
+    conn: &Connection,
+    id: &str,
+    key: &str,
+    index: u32,
+) -> Result<zeroize::Zeroizing<String>, AppError> {
+    let (secret, kind): (String, String) = conn
+        .query_row(
+            "SELECT secret, kind FROM items WHERE id = ?1 AND deleted_at IS NULL",
+            params![id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?
+        .ok_or_else(|| AppError::not_found("item"))?;
+    if kind != ItemKind::Env.as_str() {
+        return Err(AppError::validation("this item is not an environment file"));
+    }
+    let secret = zeroize::Zeroizing::new(secret);
+    let rows = parse_env_rows(&secret);
+    let (row_key, value) = rows
+        .get(usize::try_from(index).unwrap_or(usize::MAX))
+        .ok_or_else(|| AppError::not_found("variable"))?;
+    if row_key != key {
+        return Err(AppError::validation(
+            "the secret changed; reveal it again before copying",
+        ));
+    }
+    Ok(value.clone())
+}
+
+/// Parses the `env` secret format. Supports the JSON array produced by older
+/// clients and the `KEY=value` line format used by the editor. Values are
+/// zeroized on drop, including rows that are not copied.
+pub fn parse_env_rows(raw: &str) -> Vec<(String, zeroize::Zeroizing<String>)> {
+    if let Ok(serde_json::Value::Array(rows)) = serde_json::from_str(raw) {
+        return rows
+            .into_iter()
+            .filter_map(|row| {
+                let key = row.get("key")?.as_str()?.to_string();
+                let value = match row.get("value") {
+                    Some(serde_json::Value::String(s)) => s.clone(),
+                    Some(serde_json::Value::Number(n)) => n.to_string(),
+                    Some(serde_json::Value::Bool(b)) => b.to_string(),
+                    _ => String::new(),
+                };
+                Some((key, zeroize::Zeroizing::new(value)))
+            })
+            .collect();
+    }
+    raw.lines()
+        .map(|line| {
+            let line = line.strip_suffix('\r').unwrap_or(line);
+            match line.split_once('=') {
+                Some((key, value)) => (key.to_string(), zeroize::Zeroizing::new(value.to_string())),
+                None => (line.to_string(), zeroize::Zeroizing::new(String::new())),
+            }
+        })
+        .collect()
+}
+
 fn auto_classify(
     kind: ItemKind,
     title: &str,
@@ -1046,6 +1108,87 @@ mod tests {
             })
             .unwrap();
         assert!(project_audit.contains(&"projectChange".to_string()));
+    }
+
+    #[test]
+    fn env_rows_parse_json_and_lines() {
+        fn rows(raw: &str) -> Vec<(String, String)> {
+            parse_env_rows(raw)
+                .into_iter()
+                .map(|(key, value)| (key, value.to_string()))
+                .collect()
+        }
+        let json = r#"[{"key":"A","value":"1"},{"key":"B","value":2},{"skip":true}]"#;
+        assert_eq!(
+            rows(json),
+            vec![
+                ("A".to_string(), "1".to_string()),
+                ("B".to_string(), "2".to_string())
+            ]
+        );
+        assert_eq!(
+            rows("A=1\r\nB=two=three\nFLAG"),
+            vec![
+                ("A".to_string(), "1".to_string()),
+                ("B".to_string(), "two=three".to_string()),
+                ("FLAG".to_string(), String::new())
+            ]
+        );
+        // JSON null must read as an empty value, matching the UI parser.
+        assert_eq!(
+            rows(r#"[{"key":"N","value":null}]"#),
+            vec![("N".to_string(), String::new())]
+        );
+    }
+
+    #[test]
+    fn env_value_lookup_is_scoped_to_env_items() {
+        let f = fixture();
+        let env = create_item(
+            &f.db,
+            &ItemInput {
+                kind: ItemKind::Env,
+                secret: "A=1\nA=two\nB=three".into(),
+                ..item("bundle", "unused")
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            f.db.with(|c| read_env_value(c, &env.id, "B", 2))
+                .unwrap()
+                .as_str(),
+            "three"
+        );
+        // Duplicate keys copy by row, not by first match.
+        assert_eq!(
+            f.db.with(|c| read_env_value(c, &env.id, "A", 0))
+                .unwrap()
+                .as_str(),
+            "1"
+        );
+        assert_eq!(
+            f.db.with(|c| read_env_value(c, &env.id, "A", 1))
+                .unwrap()
+                .as_str(),
+            "two"
+        );
+        assert!(matches!(
+            f.db.with(|c| read_env_value(c, &env.id, "missing", 0)),
+            Err(e) if e.code == ErrorCode::Validation
+        ));
+        assert!(matches!(
+            f.db.with(|c| read_env_value(c, &env.id, "A", 99)),
+            Err(e) if e.code == ErrorCode::NotFound
+        ));
+        assert!(matches!(
+            f.db.with(|c| read_env_value(c, &env.id, "B", 1)),
+            Err(e) if e.code == ErrorCode::Validation
+        ));
+        let plain = create_item(&f.db, &item("plain", "A=1")).unwrap();
+        assert!(matches!(
+            f.db.with(|c| read_env_value(c, &plain.id, "A", 0)),
+            Err(e) if e.code == ErrorCode::Validation
+        ));
     }
 
     #[test]

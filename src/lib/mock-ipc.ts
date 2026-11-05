@@ -7,6 +7,10 @@ import {
   type BackupExportResult,
   type BackupPreview,
   type BackupProgressPayload,
+  type ImportCommitInput,
+  type ImportEntryPreview,
+  type ImportPreview,
+  type ImportResult,
   type ItemDetail,
   type ItemFilter,
   type ItemInput,
@@ -297,6 +301,136 @@ function classify(value: string, url?: string | null): { category: string; reaso
   return { category: "Uncategorized", reason: null, tags: [] };
 }
 
+const MASKED_VALUE = "••••••";
+
+const ENV_CATEGORIES: Array<[RegExp, string]> = [
+  [/OPENAI|ANTHROPIC|CLAUDE|GROQ|GEMINI|MISTRAL|HUGGINGFACE|HF_TOKEN|COHERE|PERPLEXITY|DEEPSEEK/, "AI / LLM"],
+  [/STRIPE|PAYPAL|SQUARE|BRAINTREE|ADYEN/, "Payments"],
+  [/AWS_|AZURE|GCP_|GOOGLE_|DO_|DIGITALOCEAN|CLOUDFLARE|VERCEL/, "Cloud"],
+  [/GITHUB|GH_TOKEN|GITLAB|BITBUCKET|NPM_TOKEN/, "VCS"],
+  [/DATABASE_URL|POSTGRES|MYSQL|REDIS|MONGO/, "Database"],
+  [/SLACK|DISCORD|TELEGRAM|TWILIO|SENDGRID/, "Messaging"],
+];
+
+/** Preview-only surrogate for the backend's key-name classifier. */
+function classifyEnvKey(key: string, value: string): { category: string; tags: string[] } {
+  const suggestion = classify(value);
+  const tags = [...suggestion.tags];
+  let category = suggestion.category;
+  if (category === "Uncategorized") {
+    const upper = key.toUpperCase();
+    const hit = ENV_CATEGORIES.find(([pattern]) => pattern.test(upper));
+    if (hit) category = hit[1];
+  }
+  if (!tags.includes(".env")) tags.push(".env");
+  return { category, tags };
+}
+
+interface MockImportEntry {
+  key: string;
+  value: string;
+  category: string;
+  tags: string[];
+  duplicate: boolean;
+}
+
+function stripMockComment(raw: string): { value: string; unterminated: boolean } {
+  let quote: string | null = null;
+  let escaped = false;
+  for (let i = 0; i < raw.length; i += 1) {
+    const ch = raw[i];
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (quote === '"' && ch === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === "#" && (i === 0 || /\s/.test(raw[i - 1]))) {
+      return { value: raw.slice(0, i).trimEnd(), unterminated: false };
+    }
+  }
+  return { value: raw.trimEnd(), unterminated: quote !== null };
+}
+
+function parseMockValue(raw: string): string | null {
+  const stripped = stripMockComment(raw);
+  if (stripped.unterminated) return null;
+  const value = stripped.value.trim();
+  if (!value) return "";
+  if (value.length >= 2 && value.startsWith("'") && value.endsWith("'")) {
+    return value.slice(1, -1);
+  }
+  if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+    return value
+      .slice(1, -1)
+      .replace(/\\([nrt"\\$])/g, (_match, ch: string) =>
+        ch === "n" ? "\n" : ch === "r" ? "\r" : ch === "t" ? "\t" : ch,
+      );
+  }
+  if (value.startsWith('"') || value.startsWith("'")) return null;
+  return value;
+}
+
+/** Mirrors the backend parser closely enough for browser dev and tests. */
+function parseMockEnv(text: string): { entries: MockImportEntry[]; skipped: number } {
+  const entries: MockImportEntry[] = [];
+  const positions = new Map<string, number>();
+  let skipped = 0;
+  for (const rawLine of text.replace(/^\uFEFF/, "").split(/\r?\n/)) {
+    let line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    line = line.replace(/^export\s+/, "");
+    const eq = line.indexOf("=");
+    if (eq === -1) {
+      skipped += 1;
+      continue;
+    }
+    const key = line.slice(0, eq).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_.-]*$/.test(key) || key.length > 200) {
+      skipped += 1;
+      continue;
+    }
+    const value = parseMockValue(line.slice(eq + 1));
+    if (value === null || !value.trim() || value.length > 64 * 1024) {
+      skipped += 1;
+      continue;
+    }
+    const position = positions.get(key.toUpperCase());
+    if (position !== undefined) {
+      entries[position].value = value;
+      entries[position].duplicate = true;
+      continue;
+    }
+    positions.set(key.toUpperCase(), entries.length);
+    entries.push({ key, value, category: "", tags: [], duplicate: false });
+  }
+  for (const entry of entries) {
+    const { category, tags } = classifyEnvKey(entry.key, entry.value);
+    entry.category = category;
+    entry.tags = tags;
+  }
+  return { entries, skipped };
+}
+
+function importProjectHint(fileName: string | null | undefined): string | null {
+  if (!fileName) return null;
+  const lower = fileName.trim().toLowerCase();
+  const marker = lower.indexOf(".env");
+  if (marker === -1) return null;
+  const stem = lower.slice(0, marker).replace(/[.\-_ ]+$/, "");
+  return stem || null;
+}
+
 function toMeta(item: SeedItem & { id: string }): ItemMeta {
   return {
     id: item.id,
@@ -316,6 +450,29 @@ function toMeta(item: SeedItem & { id: string }): ItemMeta {
 
 function toDetail(item: SeedItem & { id: string }): ItemDetail {
   return { ...toMeta(item), notes: item.notes ?? null, hasSecret: Boolean(item.secret) };
+}
+
+function envRows(secret: string): { key: string; value: string }[] {
+  try {
+    const parsed = JSON.parse(secret) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed
+        .filter((row): row is { key: string } => typeof (row as { key?: unknown })?.key === "string")
+        .map((row) => {
+          const raw = (row as { value?: unknown }).value;
+          const value = typeof raw === "string" ? raw : typeof raw === "number" || typeof raw === "boolean" ? String(raw) : "";
+          return { key: row.key, value };
+        });
+    }
+  } catch {
+    // Fall back to the line format.
+  }
+  const lines = secret.split(/\r?\n/);
+  if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  return lines.map((line) => {
+    const eq = line.indexOf("=");
+    return eq === -1 ? { key: line, value: "" } : { key: line.slice(0, eq), value: line.slice(eq + 1) };
+  });
 }
 
 export function createMockIpc(
@@ -346,6 +503,7 @@ export function createMockIpc(
     if (locked) return;
     locked = true;
     unlocked = false;
+    importSessions.clear();
     emit(EVENTS.locked, null);
     for (const fn of [...stateListeners]) fn();
   };
@@ -370,6 +528,14 @@ export function createMockIpc(
 
   let backupArchive: MockBackupArchive | null = null;
   const restoreSessions = new Map<string, { preview: BackupPreview; archive: MockBackupArchive }>();
+  const importSessions = new Map<string, { entries: MockImportEntry[]; createdAt: number }>();
+  const IMPORT_TTL_MS = 10 * 60 * 1000;
+  const purgeImports = () => {
+    const now = Date.now();
+    for (const [id, session] of importSessions) {
+      if (now - session.createdAt >= IMPORT_TTL_MS) importSessions.delete(id);
+    }
+  };
 
   const listeners = new Map<string, Set<(payload: unknown) => void>>();
   const emit = (event: IpcEventName, payload: unknown = null) => {
@@ -505,6 +671,7 @@ export function createMockIpc(
       locked = false;
       keychainEnabled = false;
       restoreSessions.clear();
+      importSessions.clear();
     },
     __seedBackup: (patch) => {
       backupArchive = {
@@ -856,6 +1023,136 @@ export function createMockIpc(
         requireItem(id);
         (mock.__state.copied as string[]).push(id);
         return { clearAfterSecs: settings.clipboardClearSecs };
+      }),
+    copyEnvValue: (id, key, index) =>
+      tick(() => {
+        guard();
+        const item = requireItem(id);
+        if (item.kind !== "env") throw new IpcError("validation", "This item is not an environment file.");
+        const row = envRows(secrets.get(id) ?? "")[index];
+        if (!row) throw new IpcError("notFound", "Variable not found.");
+        if (row.key !== key) {
+          throw new IpcError("validation", "The secret changed; reveal it again before copying.");
+        }
+        (mock.__state.copied as string[]).push(id);
+        return { clearAfterSecs: settings.clipboardClearSecs };
+      }),
+
+    importEnv: (text, fileName) =>
+      tick((): ImportPreview => {
+        guard();
+        purgeImports();
+        if (text.length > 1024 * 1024) {
+          throw new IpcError("validation", "The .env file is too large.");
+        }
+        const { entries, skipped } = parseMockEnv(text);
+        if (entries.length === 0) {
+          throw new IpcError("validation", "No variables found in this file.");
+        }
+        if (entries.length > 500) {
+          throw new IpcError("validation", "Too many variables (limit 500).");
+        }
+        const sessionId = nextId("import");
+        importSessions.set(sessionId, { entries, createdAt: Date.now() });
+        const hint = importProjectHint(fileName);
+        const suggestedProjectId = hint
+          ? (projects.find((project) => !project.archivedAt && project.name.toLowerCase() === hint)?.id ?? null)
+          : null;
+        const previews: ImportEntryPreview[] = entries.map((entry, index) => ({
+          index,
+          key: entry.key,
+          maskedValue: MASKED_VALUE,
+          category: entry.category,
+          tags: [...entry.tags],
+          duplicate: entry.duplicate,
+          conflicts: (() => {
+            // One conflict per project, newest first, mirroring the backend.
+            const seen = new Set<string | null>();
+            const conflicts: ImportEntryPreview["conflicts"] = [];
+            for (const item of [...items.values()].sort((a, b) => b.updatedAt - a.updatedAt)) {
+              if (item.title.toLowerCase() !== entry.key.toLowerCase()) continue;
+              const projectId = item.projectId ?? null;
+              if (seen.has(projectId)) continue;
+              seen.add(projectId);
+              conflicts.push({ itemId: item.id, projectId });
+            }
+            return conflicts;
+          })(),
+        }));
+        return {
+          sessionId,
+          entries: previews,
+          skippedLines: skipped,
+          suggestedProjectId,
+        };
+      }),
+    importCommit: (input: ImportCommitInput) =>
+      tick((): ImportResult => {
+        guard();
+        const session = importSessions.get(input.sessionId);
+        if (!session) {
+          throw new IpcError("validation", "This import session has expired; choose the file again.");
+        }
+        importSessions.delete(input.sessionId);
+        if (new Set(input.selected).size !== input.selected.length) {
+          throw new IpcError("validation", "Duplicate import selection.");
+        }
+        if (input.selected.length > 500) {
+          throw new IpcError("validation", "Too many selected variables.");
+        }
+        if (input.projectId && !projects.some((project) => project.id === input.projectId)) {
+          throw new IpcError("notFound", "Project not found.");
+        }
+        let created = 0;
+        let updated = 0;
+        for (const index of input.selected) {
+          const entry = session.entries[index];
+          if (!entry) throw new IpcError("validation", "Invalid import selection.");
+          const existing = [...items.values()].find(
+            (item) =>
+              item.title.toLowerCase() === entry.key.toLowerCase() &&
+              (item.projectId ?? null) === input.projectId,
+          );
+          if (existing) {
+            secrets.set(existing.id, entry.value);
+            existing.secret = entry.value;
+            if (existing.categorySource !== "manual") {
+              existing.category = entry.category;
+              existing.categorySource = "import";
+            }
+            existing.tags = [...new Set([...(existing.tags ?? []), ...entry.tags])];
+            existing.updatedAt = Date.now();
+            updated += 1;
+          } else {
+            const id = nextId("i");
+            const now = Date.now();
+            const item: SeedItem & { id: string } = {
+              id,
+              kind: "apiKey",
+              title: entry.key,
+              secret: entry.value,
+              username: null,
+              url: null,
+              projectId: input.projectId,
+              notes: null,
+              category: entry.category,
+              categorySource: "import",
+              favorite: false,
+              tags: [...entry.tags],
+              createdAt: now,
+              updatedAt: now,
+            };
+            items.set(id, item);
+            secrets.set(id, entry.value);
+            created += 1;
+          }
+        }
+        refreshProjectCounts();
+        return { created, updated, skipped: session.entries.length - input.selected.length };
+      }),
+    importCancel: (sessionId) =>
+      tick(() => {
+        importSessions.delete(sessionId);
       }),
 
     search: (query, filter) =>

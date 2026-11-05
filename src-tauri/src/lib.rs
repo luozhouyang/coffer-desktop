@@ -12,6 +12,7 @@ pub mod commands;
 pub mod crypto;
 pub mod error;
 pub mod events;
+pub mod import;
 pub mod keychain;
 pub mod models;
 pub mod search;
@@ -29,10 +30,11 @@ use tauri_specta::{Builder, Event, collect_commands, collect_events};
 use crate::commands::search::search;
 use crate::commands::{
     audit_list, backup_export, backup_export_keychain, backup_restore_begin, backup_restore_cancel,
-    backup_restore_commit, classify_preview, copy_secret, item_create, item_delete, item_get,
-    item_reveal_secret, item_set_category, item_set_project, item_toggle_favorite, item_update,
-    items_list, project_create, project_delete, project_update, projects_list, settings_get,
-    settings_set, sidebar_counts, vault_change_password, vault_create, vault_keychain_disable,
+    backup_restore_commit, classify_preview, copy_env_value, copy_secret, import_cancel,
+    import_commit, import_env, item_create, item_delete, item_get, item_reveal_secret,
+    item_set_category, item_set_project, item_toggle_favorite, item_update, items_list,
+    project_create, project_delete, project_update, projects_list, settings_get, settings_set,
+    sidebar_counts, vault_change_password, vault_create, vault_keychain_disable,
     vault_keychain_enable, vault_keychain_status, vault_lock, vault_status, vault_touch_activity,
     vault_unlock, vault_unlock_keychain,
 };
@@ -83,9 +85,13 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             item_toggle_favorite,
             item_reveal_secret,
             copy_secret,
+            copy_env_value,
             search,
             classify_preview,
             audit_list,
+            import_env,
+            import_commit,
+            import_cancel,
             backup_export,
             backup_export_keychain,
             backup_restore_begin,
@@ -124,6 +130,10 @@ fn spawn_background_tasks<R: Runtime>(app: AppHandle<R>) {
             let Some(state) = handle.try_state::<AppState>() else {
                 continue;
             };
+            // Abandoned import previews retain plaintext; drop them on TTL.
+            if let Ok(mut sessions) = state.import_sessions.lock() {
+                sessions.expire();
+            }
             if !state.is_unlocked() {
                 continue;
             }
@@ -232,9 +242,13 @@ mod tests {
         "item_toggle_favorite",
         "item_reveal_secret",
         "copy_secret",
+        "copy_env_value",
         "search",
         "classify_preview",
         "audit_list",
+        "import_env",
+        "import_commit",
+        "import_cancel",
         "backup_export",
         "backup_export_keychain",
         "backup_restore_begin",

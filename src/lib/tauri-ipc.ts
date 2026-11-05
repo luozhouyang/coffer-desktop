@@ -59,6 +59,11 @@ export function createTauriIpc(): IpcClient {
     itemToggleFavorite: (id) => call("item_toggle_favorite", { id }),
     itemRevealSecret: (id) => call("item_reveal_secret", { id }),
     copySecret: (id) => call("copy_secret", { id }),
+    copyEnvValue: (id, key, index) => call("copy_env_value", { id, key, index }),
+
+    importEnv: (text, fileName) => call("import_env", { text, fileName: fileName ?? null }),
+    importCommit: (input) => call("import_commit", { input }),
+    importCancel: (sessionId) => call("import_cancel", { sessionId }),
 
     search: (query, filter) => call("search", { query, ...filter }),
     classifyPreview: (input) =>

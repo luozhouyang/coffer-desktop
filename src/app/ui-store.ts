@@ -16,12 +16,17 @@ export interface ProjectDialogRequest {
   projectId?: string;
 }
 
+export interface ImportRequest {
+  defaultProjectId: string | null;
+}
+
 interface UiState {
   paletteOpen: boolean;
   editor: EditorRequest | null;
   /** Default kind for a new item (from the list's kind filter). */
   defaultKind: ItemKind | null;
   projectDialog: ProjectDialogRequest | null;
+  importDialog: ImportRequest | null;
   /** Editor draft is dirty; used by route blockers. */
   editorDirty: boolean;
 }
@@ -31,6 +36,7 @@ const initial: UiState = {
   editor: null,
   defaultKind: null,
   projectDialog: null,
+  importDialog: null,
   editorDirty: false,
 };
 
@@ -60,6 +66,8 @@ export const uiStore = {
   setEditorDirty: (dirty: boolean) => set({ editorDirty: dirty }),
   openProjectDialog: (request: ProjectDialogRequest) => set({ projectDialog: request }),
   closeProjectDialog: () => set({ projectDialog: null }),
+  openImport: (defaultProjectId: string | null = null) => set({ importDialog: { defaultProjectId } }),
+  closeImport: () => set({ importDialog: null }),
 };
 
 export function useUiStore<T>(selector: (s: UiState) => T): T {

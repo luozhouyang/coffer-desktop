@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { KeyRound, Plus, SearchX, Tag } from "lucide-react";
+import { KeyRound, Plus, SearchX, Tag, Upload } from "lucide-react";
 import { useItems, useProjects } from "@/app/queries";
 import { uiStore } from "@/app/ui-store";
 import { CATEGORIES, type ItemFilter, type ItemKind, type ItemMeta } from "@/lib/ipc-types";
@@ -34,7 +34,7 @@ export function VaultList({ search }: { search: Record<string, unknown> }) {
   const filter = parseVaultSearch(search);
   const navigate = useNavigate();
   const params = useParams({ strict: false }) as { itemId?: string };
-  const { openCreate } = uiStore;
+  const { openCreate, openImport } = uiStore;
 
   const { data: projects } = useProjects();
   const [sort, setSort] = useState<SortKey>("updated");
@@ -112,14 +112,25 @@ export function VaultList({ search }: { search: Record<string, unknown> }) {
               {filter.q ? ` matching “${filter.q}”` : ""}
             </p>
           </div>
-          <Button
-            size="sm"
-            className="h-8 shrink-0 gap-1.5 px-2.5 text-[12px]"
-            onClick={() => openCreate(filter.kind ?? null)}
-          >
-            <Plus className="size-3.5" aria-hidden />
-            New
-          </Button>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 gap-1.5 px-2 text-[12px] text-muted-foreground"
+              onClick={() => openImport(projectFilterId(filter) ?? null)}
+            >
+              <Upload className="size-3.5" aria-hidden />
+              Import
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 shrink-0 gap-1.5 px-2.5 text-[12px]"
+              onClick={() => openCreate(filter.kind ?? null)}
+            >
+              <Plus className="size-3.5" aria-hidden />
+              New
+            </Button>
+          </div>
         </div>
         <div
           role="group"
@@ -193,6 +204,23 @@ export function VaultList({ search }: { search: Record<string, unknown> }) {
               filter.q
                 ? "Try a different search term or clear the filter."
                 : "Add your first secret to this vault. Everything stays encrypted on this device."
+            }
+            action={
+              filter.q || filter.category ? undefined : (
+                <div className="flex items-center gap-2">
+                  <Button size="sm" onClick={() => openCreate(filter.kind ?? null)} className="gap-1.5">
+                    <Plus className="size-3.5" aria-hidden /> New secret
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => openImport(projectFilterId(filter) ?? null)}
+                    className="gap-1.5"
+                  >
+                    <Upload className="size-3.5" aria-hidden /> Import .env
+                  </Button>
+                </div>
+              )
             }
           />
         ) : null}
