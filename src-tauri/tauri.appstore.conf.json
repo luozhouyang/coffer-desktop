@@ -2,6 +2,7 @@
   "bundle": {
     "createUpdaterArtifacts": false,
     "macOS": {
+      "bundleVersion": "2026110502",
       "entitlements": "./Entitlements.plist",
       "infoPlist": "./Info.plist",
       "files": {
